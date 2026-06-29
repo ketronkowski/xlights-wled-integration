@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xrgb>
+    <models>
+        <!-- garage-wled: 3 props with 2 null gaps -->
+        <model name="left-icicles"
+               DisplayAs="Single Line"
+               StringType="RGB Nodes"
+               Controller="garage-wled"
+               StartChannel="1"
+               StringCount="1"
+               parm1="100" />
+
+        <model name="null-gap-1"
+               DisplayAs="Single Line"
+               StringType="RGB Nodes"
+               Controller="garage-wled"
+               StartChannel="301"
+               StringCount="1"
+               parm1="5" />
+
+        <model name="right-icicles"
+               DisplayAs="Single Line"
+               StringType="RGB Nodes"
+               Controller="garage-wled"
+               StartChannel="316"
+               StringCount="1"
+               parm1="100" />
+
+        <model name="null-gap-2"
+               DisplayAs="Single Line"
+               StringType="RGB Nodes"
+               Controller="garage-wled"
+               StartChannel="616"
+               StringCount="1"
+               parm1="5" />
+
+        <model name="roofline-main"
+               DisplayAs="Single Line"
+               StringType="RGB Nodes"
+               Controller="garage-wled"
+               StartChannel="631"
+               StringCount="1"
+               parm1="90" />
+
+        <!-- roofline-wled -->
+        <model name="roofline-east"
+               DisplayAs="Single Line"
+               StringType="RGB Nodes"
+               Controller="roofline-wled"
+               StartChannel="1"
+               StringCount="1"
+               parm1="75" />
+
+        <model name="roofline-west"
+               DisplayAs="Single Line"
+               StringType="RGB Nodes"
+               Controller="roofline-wled"
+               StartChannel="226"
+               StringCount="1"
+               parm1="75" />
+    </models>
+</xrgb>

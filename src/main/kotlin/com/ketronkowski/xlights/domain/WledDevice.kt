@@ -1,0 +1,10 @@
+package com.ketronkowski.xlights.domain
+
+data class WledDevice(
+    val name: String,
+    val ipAddress: String,
+    val firmwareVersion: String,
+    val totalLeds: Int,
+    val bytesPerPixel: Int,   // derived from LED type: 3=RGB, 4=RGBW
+    val segments: List<WledSegment>,
+)
