@@ -13,7 +13,8 @@ data class WledInfoResponse(
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class WledLedsInfo(
     val count: Int = 0,
-    val lc: Int = 1,     // 1=RGB, 2=White, 3=RGBW
+    val lc: Int = 1,        // 1=RGB, 2=White, 3=RGBW
+    val maxseg: Int = 32,   // maximum number of segments the firmware supports
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -54,7 +55,9 @@ data class WledStatePatch(
 
 data class WledSegmentPatch(
     val id: Int? = null,
-    @param:JsonProperty("n") val name: String? = null,
+    @get:JsonProperty("n")
+    @param:JsonProperty("n")
+    val name: String? = null,
     val start: Int? = null,
     val stop: Int? = null,
     val on: Boolean? = null,

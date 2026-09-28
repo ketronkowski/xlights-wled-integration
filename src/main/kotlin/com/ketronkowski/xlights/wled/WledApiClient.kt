@@ -8,13 +8,16 @@ import com.ketronkowski.xlights.wled.dto.WledInfoResponse
 import com.ketronkowski.xlights.wled.dto.WledStateResponse
 import com.ketronkowski.xlights.wled.dto.WledStatePatch
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
+import org.springframework.http.client.MultipartBodyBuilder
 import org.springframework.stereotype.Component
-import org.springframework.web.reactive.function.client.WebClient
-import org.springframework.web.reactive.function.client.bodyToMono
+import org.springframework.web.client.RestClient
+import org.springframework.web.client.body
 
 @Component
 class WledApiClient(
-    private val webClient: WebClient,
+    private val restClient: RestClient,
     private val objectMapper: ObjectMapper,
 ) {
     private val log = LoggerFactory.getLogger(WledApiClient::class.java)
@@ -33,33 +36,67 @@ class WledApiClient(
             info.name, ip, info.leds.count, bytesPerPixel, segments.size)
 
         return WledDevice(
-            name           = info.name,
-            ipAddress      = ip,
+            name            = info.name,
+            ipAddress       = ip,
             firmwareVersion = info.ver,
-            totalLeds      = info.leds.count,
-            bytesPerPixel  = bytesPerPixel,
-            segments       = segments,
+            totalLeds       = info.leds.count,
+            bytesPerPixel   = bytesPerPixel,
+            maxSegments     = info.leds.maxseg,
+            segments        = segments,
         )
     }
 
     fun patchState(ip: String, patch: WledStatePatch) {
         val body = objectMapper.writeValueAsString(patch)
         log.debug("POST /json/state @ {}  body={}", ip, body)
-        webClient.post()
+        restClient.post()
             .uri("http://$ip/json/state")
-            .header("Content-Type", "application/json")
-            .bodyValue(body)
+            .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .body(body)
             .retrieve()
-            .bodyToMono<String>()
-            .block()
+            .toBodilessEntity()
+    }
+
+    // ── Raw config/preset backup & restore ──────────────────────────────────
+    // cfg.json (network/hardware config) and presets.json (presets + playlists)
+    // are served/accepted as plain static files, not via the JSON API.
+
+    fun downloadRaw(ip: String, filename: String): String =
+        restClient.get()
+            .uri("http://$ip/$filename")
+            .retrieve()
+            .body<String>()
+            ?: error("Empty response from $ip/$filename")
+
+    fun uploadRaw(ip: String, filename: String, content: String) {
+        val multipart = MultipartBodyBuilder().apply {
+            part("data", content.toByteArray(Charsets.UTF_8))
+                .filename(filename)
+                .contentType(MediaType.APPLICATION_JSON)
+        }.build()
+
+        log.debug("POST /edit @ {}  filename={}  bytes={}", ip, filename, content.length)
+        restClient.post()
+            .uri("http://$ip/edit")
+            .contentType(MediaType.MULTIPART_FORM_DATA)
+            .body(multipart)
+            .retrieve()
+            .toBodilessEntity()
+    }
+
+    fun reboot(ip: String) {
+        log.debug("POST /reset @ {}", ip)
+        restClient.post()
+            .uri("http://$ip/reset")
+            .retrieve()
+            .toBodilessEntity()
     }
 
     private fun <T : Any> get(ip: String, path: String, clazz: Class<T>): T =
-        webClient.get()
+        restClient.get()
             .uri("http://$ip$path")
             .retrieve()
-            .bodyToMono(clazz)
-            .block()
+            .body(clazz)
             ?: error("Empty response from $ip$path")
 
     // lc (light capability): 1=RGB(3bpp), 2=White(1bpp), 3=RGBW(4bpp), 7=CCT+RGBW(4bpp)

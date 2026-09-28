@@ -16,8 +16,9 @@ class XLightsConfigParserTest {
         val controllers = parser.parse(showDir)
         assertEquals(2, controllers.size)
         val garage = controllers.find { it.name == "garage-wled" }!!
-        assertEquals("WLED", garage.protocol)
-        assertEquals("192.168.1.100", garage.ipAddress)
+        // Protocol in xLights is the network protocol (DDP), Vendor is WLED
+        assertEquals("DDP", garage.protocol)
+        assertEquals("wled-garage.local", garage.ipAddress)
         assertEquals(900, garage.totalChannels)
     }
 
@@ -40,20 +41,32 @@ class XLightsConfigParserTest {
     }
 
     @Test
-    fun `detects null gap models by name`() {
+    fun `detects null gap models by LayoutGroup Nulls`() {
         val controllers = parser.parse(showDir)
         val garage = controllers.find { it.name == "garage-wled" }!!
         val nullModels = garage.models.filter { it.isNull }
         assertEquals(2, nullModels.size)
+        // Fixture uses LayoutGroup="Nulls" as the canonical marker
         assertTrue(nullModels.all { it.name.contains("null", ignoreCase = true) })
     }
 
     @Test
-    fun `computes channel count from parm1`() {
+    fun `computes channel count from NumStrings and NodesPerString`() {
         val controllers = parser.parse(showDir)
         val garage = controllers.find { it.name == "garage-wled" }!!
         val icicles = garage.models.find { it.name == "left-icicles" }!!
-        // 1 string × 100 nodes × 3 bytes = 300
+        // NumStrings=1 × NodesPerString=100 × 3 bytes = 300
         assertEquals(300, icicles.channelCount)
+    }
+
+    @Test
+    fun `parses StartChannel in xLights controller-relative format`() {
+        val controllers = parser.parse(showDir)
+        val garage = controllers.find { it.name == "garage-wled" }!!
+        val icicles = garage.models.find { it.name == "left-icicles" }!!
+        assertEquals(1, icicles.startChannel)  // !garage-wled:1 → 1
+
+        val gap = garage.models.find { it.name == "null-gap-1" }!!
+        assertEquals(301, gap.startChannel)    // !garage-wled:301 → 301
     }
 }

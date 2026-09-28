@@ -9,28 +9,31 @@ version = "0.1.0"
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(26)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
 kotlin {
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict")
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_26
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
     }
 }
 
 dependencies {
     implementation(platform(libs.spring.boot.bom))
     implementation(libs.spring.boot.starter)
-    implementation(libs.spring.boot.starter.webflux)
+    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.actuator)
     implementation(libs.jackson.dataformat.xml)
     implementation(libs.jackson.module.kotlin)
-    implementation(libs.picocli)
+    implementation(libs.jackson.datatype.jsr310)
+    implementation(libs.jackson3.module.kotlin)
     implementation(libs.jmdns)
     implementation(libs.kotlin.reflect)
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.mockito.kotlin)
 }
 
 tasks.test {

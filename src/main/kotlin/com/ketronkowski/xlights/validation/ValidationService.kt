@@ -2,6 +2,7 @@ package com.ketronkowski.xlights.validation
 
 import com.ketronkowski.xlights.domain.*
 import com.ketronkowski.xlights.wled.WledApiClient
+import com.ketronkowski.xlights.wled.WledBackupService
 import com.ketronkowski.xlights.wled.WledDiscovery
 import com.ketronkowski.xlights.wled.dto.WledSegmentPatch
 import com.ketronkowski.xlights.wled.dto.WledStatePatch
@@ -9,19 +10,30 @@ import com.ketronkowski.xlights.xlights.XLightsConfigParser
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.nio.file.Path
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executors
 
 @Service
 class ValidationService(
     private val parser: XLightsConfigParser,
     private val discovery: WledDiscovery,
     private val apiClient: WledApiClient,
+    private val backupService: WledBackupService,
 ) {
     private val log = LoggerFactory.getLogger(ValidationService::class.java)
 
-    fun validate(showDir: Path, timeoutSeconds: Int): ValidationReport {
-        val xLightsControllers = parser.parse(showDir)
-        val wledDevices        = discoverAndFetch(timeoutSeconds)
-        return buildReport(xLightsControllers, wledDevices)
+    fun validate(
+        showDir: Path,
+        timeoutSeconds: Int,
+        controllerFilter: Set<String> = emptySet(),
+    ): ValidationReport {
+        val allControllers = parser.parse(showDir)
+        val controllers    = if (controllerFilter.isEmpty()) allControllers
+            else allControllers.filter { c -> controllerFilter.any { it.equals(c.name, ignoreCase = true) } }
+        // Skip mDNS when a filter is given — we already have the exact hostnames we need.
+        val runMdns = controllerFilter.isEmpty()
+        val wledDevices = fetchDevices(controllers, if (runMdns) timeoutSeconds else 0)
+        return buildReport(controllers, wledDevices)
     }
 
     // ── Fix modes ────────────────────────────────────────────────────────────
@@ -29,6 +41,9 @@ class ValidationService(
     fun fix(report: ValidationReport) {
         for (cv in report.controllerValidations) {
             val device = cv.wledDevice ?: continue
+
+            if (!backupBeforeMutating(device)) continue
+
             val patches = mutableListOf<WledSegmentPatch>()
 
             for (sv in cv.segmentValidations) {
@@ -68,6 +83,16 @@ class ValidationService(
             val controller = cv.xLightsController
             if (controller.models.isEmpty()) continue
 
+            if (!backupBeforeMutating(device)) continue
+
+            val effective  = collapseGroups(controller.models)
+            val modelCount = effective.size
+            if (modelCount > device.maxSegments) {
+                log.warn("'{}' has {} effective segments but WLED supports only {} — " +
+                    "only the first {} will be synced",
+                    device.name, modelCount, device.maxSegments, device.maxSegments)
+            }
+
             log.info("Rebuilding all segments on '{}' ({}) from xLights...", device.name, device.ipAddress)
 
             // Step 1: collapse WLED to a single segment covering all LEDs
@@ -83,11 +108,11 @@ class ValidationService(
                 ))
             }
 
-            // Step 3: create segments in xLights model order
+            // Step 3: create segments in xLights model order (up to firmware limit)
             val bpp = device.bytesPerPixel
-            controller.models.forEachIndexed { index, model ->
+            effective.take(device.maxSegments).forEachIndexed { index, model ->
                 val pixelStart = (model.startChannel - 1) / bpp
-                val pixelStop  = pixelStart + model.channelCount / bpp
+                val pixelStop  = minOf(pixelStart + model.channelCount / bpp, device.totalLeds)
                 val patch = WledSegmentPatch(
                     id    = index,
                     name  = model.name,
@@ -101,17 +126,73 @@ class ValidationService(
         }
     }
 
+    // Returns true if the device was successfully backed up (safe to mutate).
+    // On backup failure, logs and returns false so the caller skips this device
+    // rather than patching it without a recovery point.
+    private fun backupBeforeMutating(device: WledDevice): Boolean =
+        try {
+            backupService.backup(device)
+            true
+        } catch (e: Exception) {
+            log.error("Skipping '{}' ({}) — pre-mutation backup failed: {}", device.name, device.ipAddress, e.message)
+            false
+        }
+
     // ── Internal ─────────────────────────────────────────────────────────────
 
-    private fun discoverAndFetch(timeoutSeconds: Int): List<WledDevice> {
-        val ips = discovery.discoverDevices(timeoutSeconds)
-        return ips.mapNotNull { ip ->
-            try {
-                apiClient.fetchDevice(ip)
-            } catch (e: Exception) {
-                log.error("Failed to fetch WLED device at {}: {}", ip, e.message)
-                null
+    // Fetch devices in parallel: use xLights-configured hostnames first (most reliable),
+    // then fold in mDNS discovery for any additional devices not already found.
+    private fun fetchDevices(controllers: List<XLightsController>, timeoutSeconds: Int): List<WledDevice> {
+        val pool = Executors.newCachedThreadPool()
+        try {
+            // Primary: each controller's configured hostname/IP — all in parallel
+            val futures = controllers
+                .filter { it.ipAddress != null }
+                .map { ctrl ->
+                    val host = ctrl.ipAddress!!
+                    ctrl to CompletableFuture.supplyAsync({
+                        try {
+                            val device = apiClient.fetchDevice(host)
+                            log.info("Reached '{}' directly at {}", device.name, host)
+                            device
+                        } catch (e: Exception) {
+                            log.warn("Cannot reach WLED controller '{}' at {}: {}", ctrl.name, host, e.message)
+                            null
+                        }
+                    }, pool)
+                }
+
+            val devices = futures.mapNotNull { (_, f) -> f.get() }.toMutableList()
+            val reachedNames = devices.map { it.name.lowercase() }.toHashSet()
+
+            // Secondary: mDNS discovery for devices not already fetched (skipped when timeout=0)
+            if (timeoutSeconds > 0) {
+                try {
+                    val discoveredIps = discovery.discoverDevices(timeoutSeconds)
+                    val extraFutures  = discoveredIps.map { ip ->
+                        CompletableFuture.supplyAsync({
+                            try {
+                                apiClient.fetchDevice(ip)
+                            } catch (e: Exception) {
+                                log.warn("Failed to fetch WLED device at {}: {}", ip, e.message)
+                                null
+                            }
+                        }, pool)
+                    }
+                    extraFutures.mapNotNull { it.get() }
+                        .filter { it.name.lowercase() !in reachedNames }
+                        .forEach { device ->
+                            devices += device
+                            log.info("Discovered additional WLED device '{}' at {} via mDNS", device.name, device.ipAddress)
+                        }
+                } catch (e: Exception) {
+                    log.warn("mDNS discovery failed (continuing with directly-reached devices): {}", e.message)
+                }
             }
+
+            return devices
+        } finally {
+            pool.shutdown()
         }
     }
 
@@ -124,7 +205,7 @@ class ValidationService(
         val validations    = mutableListOf<ControllerValidation>()
 
         for (controller in xLightsControllers) {
-            val device = wledDevices.find { it.name.equals(controller.name, ignoreCase = true) }
+            val device = wledDevices.find { matchesControllerName(it.name, controller.name) }
             if (device != null) {
                 pairedXlights += controller.name
                 pairedWled    += device.name
@@ -132,12 +213,18 @@ class ValidationService(
 
             val bpp          = device?.bytesPerPixel ?: 3
             val expectedLeds = controller.totalChannels / bpp
-            val segValidations = controller.models.map { model ->
+            val effective    = collapseGroups(controller.models)
+            val segValidations = effective.map { model ->
                 validateModel(model, device, bpp)
             }
             val orphans = device?.segments?.filter { seg ->
-                controller.models.none { m -> m.name.equals(seg.name ?: "", ignoreCase = true) }
+                effective.none { m -> m.name.equals(seg.name ?: "", ignoreCase = true) }
             } ?: emptyList()
+
+            val segLimitWarn = if (device != null && effective.size > device.maxSegments)
+                "xLights has ${effective.size} effective segments but WLED firmware supports only " +
+                    "${device.maxSegments} — segments ${device.maxSegments + 1}–${effective.size} cannot be synced"
+            else null
 
             validations += ControllerValidation(
                 xLightsController   = controller,
@@ -146,6 +233,7 @@ class ValidationService(
                 totalLedsMatch      = device != null && device.totalLeds == expectedLeds,
                 segmentValidations  = segValidations,
                 orphanSegments      = orphans,
+                segmentLimitWarning = segLimitWarn,
             )
         }
 
@@ -157,24 +245,68 @@ class ValidationService(
     }
 
     private fun validateModel(model: XLightsModel, device: WledDevice?, bpp: Int): SegmentValidation {
-        val pixelStart = (model.startChannel - 1) / bpp
-        val pixelStop  = pixelStart + model.channelCount / bpp
+        val pixelStart   = (model.startChannel - 1) / bpp
+        val pixelStop    = pixelStart + model.channelCount / bpp
+        val clampedStop  = device?.let { minOf(pixelStop, it.totalLeds) } ?: pixelStop
 
         val segment = device?.segments?.find { it.name.equals(model.name, ignoreCase = true) }
 
         val status = when {
-            segment == null                                           -> SegmentStatus.MISSING
-            segment.start != pixelStart || segment.stop != pixelStop -> SegmentStatus.RANGE_MISMATCH
-            model.isNull && segment.on                               -> SegmentStatus.NULL_NOT_OFF
-            else                                                      -> SegmentStatus.OK
+            segment == null                                                 -> SegmentStatus.MISSING
+            segment.start != pixelStart || segment.stop != clampedStop     -> SegmentStatus.RANGE_MISMATCH
+            model.isNull && segment.on                                      -> SegmentStatus.NULL_NOT_OFF
+            else                                                             -> SegmentStatus.OK
         }
 
         return SegmentValidation(
-            model             = model,
+            model              = model,
             expectedPixelStart = pixelStart,
             expectedPixelStop  = pixelStop,
             actualSegment      = segment,
             status             = status,
         )
+    }
+
+    // Pair WLED device name to xLights controller name:
+    //  1. Exact match (case-insensitive): "Octa1" == "Octa1"
+    //  2. Strip common "wled-" prefix: "wled-octa1" matches "Octa1"
+    private fun matchesControllerName(wledName: String, controllerName: String): Boolean {
+        if (wledName.equals(controllerName, ignoreCase = true)) return true
+        val stripped = wledName.removePrefix("wled-")
+        return stripped.equals(controllerName, ignoreCase = true)
+    }
+
+    // Merge consecutive models whose names share a common base after stripping a trailing "-N" suffix
+    // (e.g., PeaceStake-1 … PeaceStake-35 → one "PeaceStake" model spanning the full range).
+    // Models without a numbered suffix, or whose base differs from their neighbor, are left alone.
+    private fun collapseGroups(models: List<XLightsModel>): List<XLightsModel> {
+        val numberedSuffix = Regex("""-\d+$""")
+        val result = mutableListOf<XLightsModel>()
+        var i = 0
+        while (i < models.size) {
+            val model = models[i]
+            if (!model.name.matches(Regex(""".*-\d+$"""))) {
+                result += model
+                i++
+                continue
+            }
+            val baseName = model.name.replace(numberedSuffix, "")
+            var j = i + 1
+            while (j < models.size) {
+                val next = models[j]
+                if (!next.name.matches(Regex(""".*-\d+$"""))) break
+                if (next.name.replace(numberedSuffix, "") != baseName) break
+                j++
+            }
+            val group = models.subList(i, j)
+            result += if (group.size == 1) model
+            else model.copy(
+                name         = baseName,
+                channelCount = group.sumOf { it.channelCount },
+                isNull       = group.all { it.isNull },
+            )
+            i = j
+        }
+        return result
     }
 }

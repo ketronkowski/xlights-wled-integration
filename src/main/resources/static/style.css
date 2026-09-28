@@ -1,0 +1,136 @@
+:root {
+  color-scheme: light dark;
+  --ok: #2e7d32;
+  --warn: #b26a00;
+  --err: #999;
+  --bg-card: canvas;
+  --border: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+  padding: 0 1.5rem 3rem;
+}
+
+h1 {
+  font-size: 1.3rem;
+  margin: 1rem 0 0.75rem;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  padding-top: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.sep {
+  width: 1px;
+  height: 1.4rem;
+  background: var(--border);
+  margin: 0 0.25rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) { background: color-mix(in srgb, currentColor 8%, transparent); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+button.action { border-color: color-mix(in srgb, var(--ok) 60%, var(--border)); }
+button.action.danger { border-color: color-mix(in srgb, #c62828 60%, var(--border)); }
+
+.upload-picker {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px dashed var(--border);
+  cursor: pointer;
+}
+
+.status-line, .summary-line {
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.summary-line:empty { display: none; }
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.empty-hint {
+  opacity: 0.6;
+  grid-column: 1 / -1;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.card-title { font-weight: 600; }
+.card-ip { font-size: 0.8rem; opacity: 0.65; display: block; }
+
+.badges { display: flex; flex-direction: column; gap: 0.3rem; }
+
+.badge {
+  display: inline-block;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.badge.ok { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+.badge.warn { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+.badge.err { background: color-mix(in srgb, var(--err) 30%, transparent); color: var(--err); }
+
+.card-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+.card-actions button { font-size: 0.82rem; padding: 0.3rem 0.6rem; }
+
+.card-select {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}

@@ -1,8 +1,19 @@
 package com.ketronkowski.xlights.validation
 
 import com.ketronkowski.xlights.domain.*
+import com.ketronkowski.xlights.wled.WledApiClient
+import com.ketronkowski.xlights.wled.WledBackupService
+import com.ketronkowski.xlights.wled.WledDiscovery
+import com.ketronkowski.xlights.xlights.XLightsConfigParser
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.any
+import org.mockito.kotlin.atLeastOnce
+import org.mockito.kotlin.inOrder
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 
 class ValidationServiceTest {
 
@@ -24,6 +35,7 @@ class ValidationServiceTest {
         firmwareVersion = "0.15.0",
         totalLeds      = 300,
         bytesPerPixel  = 3,
+        maxSegments    = 32,
         segments       = listOf(
             WledSegment(0, "left-icicles",  start = 0,   stop = 100, on = true),
             WledSegment(1, "null-gap-1",    start = 100, stop = 105, on = false),
@@ -77,6 +89,66 @@ class ValidationServiceTest {
         val report = buildReport(listOf(controller), listOf(device))
         assertEquals(1, report.unpairedXlightsControllers.size)
         assertEquals(1, report.unpairedWledDevices.size)
+    }
+
+    // ── fix()/fixAll() back up before mutating ──────────────────────────────────
+
+    @Test
+    fun `fix backs up the device before patching segments`() {
+        val apiClient = mock<WledApiClient>()
+        val backupService = mock<WledBackupService>()
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService)
+
+        val report = buildReport(listOf(controller), listOf(perfectDevice.copy(segments = perfectDevice.segments.drop(1))))
+
+        service.fix(report)
+
+        val order = inOrder(backupService, apiClient)
+        order.verify(backupService).backup(perfectDevice.copy(segments = perfectDevice.segments.drop(1)))
+        order.verify(apiClient).patchState(any(), any())
+    }
+
+    @Test
+    fun `fix skips a device whose backup fails, without patching it`() {
+        val apiClient = mock<WledApiClient>()
+        val backupService = mock<WledBackupService>()
+        whenever(backupService.backup(any())).thenThrow(RuntimeException("connection refused"))
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService)
+
+        val report = buildReport(listOf(controller), listOf(perfectDevice.copy(segments = perfectDevice.segments.drop(1))))
+
+        service.fix(report)
+
+        verify(apiClient, never()).patchState(any(), any())
+    }
+
+    @Test
+    fun `fixAll backs up the device before rebuilding segments`() {
+        val apiClient = mock<WledApiClient>()
+        val backupService = mock<WledBackupService>()
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService)
+
+        val report = buildReport(listOf(controller), listOf(perfectDevice))
+
+        service.fixAll(report)
+
+        val order = inOrder(backupService, apiClient)
+        order.verify(backupService).backup(perfectDevice)
+        order.verify(apiClient, atLeastOnce()).patchState(any(), any())
+    }
+
+    @Test
+    fun `fixAll skips a device whose backup fails, without patching it`() {
+        val apiClient = mock<WledApiClient>()
+        val backupService = mock<WledBackupService>()
+        whenever(backupService.backup(any())).thenThrow(RuntimeException("connection refused"))
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService)
+
+        val report = buildReport(listOf(controller), listOf(perfectDevice))
+
+        service.fixAll(report)
+
+        verify(apiClient, never()).patchState(any(), any())
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

@@ -6,5 +6,6 @@ data class WledDevice(
     val firmwareVersion: String,
     val totalLeds: Int,
     val bytesPerPixel: Int,   // derived from LED type: 3=RGB, 4=RGBW
+    val maxSegments: Int,
     val segments: List<WledSegment>,
 )

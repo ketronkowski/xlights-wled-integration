@@ -1,62 +1,69 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <xrgb>
     <models>
-        <!-- garage-wled: 3 props with 2 null gaps -->
+        <!-- garage-wled: 3 props with 2 null gaps (LayoutGroup="Nulls") -->
         <model name="left-icicles"
                DisplayAs="Single Line"
                StringType="RGB Nodes"
                Controller="garage-wled"
-               StartChannel="1"
-               StringCount="1"
-               parm1="100" />
+               StartChannel="!garage-wled:1"
+               NumStrings="1"
+               NodesPerString="100"
+               LayoutGroup="Non Null" />
 
         <model name="null-gap-1"
                DisplayAs="Single Line"
                StringType="RGB Nodes"
                Controller="garage-wled"
-               StartChannel="301"
-               StringCount="1"
-               parm1="5" />
+               StartChannel="!garage-wled:301"
+               NumStrings="1"
+               NodesPerString="5"
+               LayoutGroup="Nulls" />
 
         <model name="right-icicles"
                DisplayAs="Single Line"
                StringType="RGB Nodes"
                Controller="garage-wled"
-               StartChannel="316"
-               StringCount="1"
-               parm1="100" />
+               StartChannel="!garage-wled:316"
+               NumStrings="1"
+               NodesPerString="100"
+               LayoutGroup="Non Null" />
 
         <model name="null-gap-2"
                DisplayAs="Single Line"
                StringType="RGB Nodes"
                Controller="garage-wled"
-               StartChannel="616"
-               StringCount="1"
-               parm1="5" />
+               StartChannel="!garage-wled:616"
+               NumStrings="1"
+               NodesPerString="5"
+               LayoutGroup="Nulls" />
 
         <model name="roofline-main"
                DisplayAs="Single Line"
                StringType="RGB Nodes"
                Controller="garage-wled"
-               StartChannel="631"
-               StringCount="1"
-               parm1="90" />
+               StartChannel="!garage-wled:631"
+               NumStrings="1"
+               NodesPerString="90"
+               LayoutGroup="Non Null" />
 
         <!-- roofline-wled -->
         <model name="roofline-east"
                DisplayAs="Single Line"
                StringType="RGB Nodes"
                Controller="roofline-wled"
-               StartChannel="1"
-               StringCount="1"
-               parm1="75" />
+               StartChannel="!roofline-wled:1"
+               NumStrings="1"
+               NodesPerString="75"
+               LayoutGroup="Non Null" />
 
         <model name="roofline-west"
                DisplayAs="Single Line"
                StringType="RGB Nodes"
                Controller="roofline-wled"
-               StartChannel="226"
-               StringCount="1"
-               parm1="75" />
+               StartChannel="!roofline-wled:226"
+               NumStrings="1"
+               NodesPerString="75"
+               LayoutGroup="Non Null" />
     </models>
 </xrgb>

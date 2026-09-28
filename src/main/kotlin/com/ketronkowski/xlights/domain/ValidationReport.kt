@@ -22,6 +22,8 @@ data class ControllerValidation(
     val totalLedsMatch: Boolean,
     val segmentValidations: List<SegmentValidation>,
     val orphanSegments: List<WledSegment>,  // WLED segments with no matching xLights model
+    // Set when xLights model count exceeds the WLED firmware's maxseg limit
+    val segmentLimitWarning: String? = null,
 )
 
 data class ValidationReport(

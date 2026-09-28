@@ -1,15 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Networks>
-    <Controller
-        Name="garage-wled"
-        Protocol="WLED"
-        IP="192.168.1.100"
-        MaxChannels="900"
-        Active="1" />
-    <Controller
-        Name="roofline-wled"
-        Protocol="WLED"
-        IP="192.168.1.101"
-        MaxChannels="450"
-        Active="1" />
+    <Controller Id="1" Name="garage-wled" Type="Ethernet" Vendor="WLED" Protocol="DDP"
+                IP="wled-garage.local" ActiveState="Active" AutoLayout="1">
+        <network MaxChannels="900" NetworkType="DDP" ComPort="wled-garage.local"/>
+    </Controller>
+    <Controller Id="2" Name="roofline-wled" Type="Ethernet" Vendor="WLED" Protocol="DDP"
+                IP="wled-roofline.local" ActiveState="Active" AutoLayout="1">
+        <network MaxChannels="450" NetworkType="DDP" ComPort="wled-roofline.local"/>
+    </Controller>
 </Networks>

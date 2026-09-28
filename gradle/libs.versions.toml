@@ -1,19 +1,27 @@
 [versions]
 kotlin = "2.4.0"
 spring-boot = "4.1.0"
-picocli = "4.7.7"
 jmdns = "3.6.3"
+mockito-kotlin = "5.4.0"
 
 [libraries]
 spring-boot-bom            = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 spring-boot-starter        = { module = "org.springframework.boot:spring-boot-starter" }
-spring-boot-starter-webflux = { module = "org.springframework.boot:spring-boot-starter-webflux" }
+spring-boot-starter-web    = { module = "org.springframework.boot:spring-boot-starter-web" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-test   = { module = "org.springframework.boot:spring-boot-starter-test" }
 jackson-dataformat-xml     = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-xml" }
 jackson-module-kotlin      = { module = "com.fasterxml.jackson.module:jackson-module-kotlin" }
-picocli                    = { module = "info.picocli:picocli", version.ref = "picocli" }
+jackson-datatype-jsr310    = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310" }
+# Spring Boot 4's default MVC JSON stack is Jackson 3 (package "tools.jackson"), a separate
+# library from the classic Jackson 2 ("com.fasterxml.jackson") stack above. Both coexist here:
+# Jackson 2 is used directly for our own file-based JSON I/O (upload-meta.json, backup meta.json);
+# Jackson 3 needs its own Kotlin module for Spring's autoconfigured ObjectMapper to construct
+# Kotlin data classes (e.g. primitive constructor params) in @RequestBody/@ResponseBody.
+jackson3-module-kotlin     = { module = "tools.jackson.module:jackson-module-kotlin", version = "3.1.4" }
 jmdns                      = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
 kotlin-reflect             = { module = "org.jetbrains.kotlin:kotlin-reflect" }
+mockito-kotlin              = { module = "org.mockito.kotlin:mockito-kotlin", version.ref = "mockito-kotlin" }
 
 [plugins]
 kotlin-jvm    = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
