@@ -11,10 +11,9 @@
     <h1>xLights ⇄ WLED</h1>
 
     <div class="bar-row">
-      <label class="upload-picker">
-        <input type="file" id="folderInput" webkitdirectory directory multiple hidden />
-        <span id="folderLabel">Choose xLights show folder…</span>
-      </label>
+      <input type="file" id="folderInputFallback" webkitdirectory directory multiple hidden />
+      <button id="chooseFolderBtn" class="upload-picker" type="button">Choose xLights show folder…</button>
+      <span id="folderLabel" class="status-line"></span>
       <button id="uploadBtn" disabled>Upload</button>
       <span id="uploadStatus" class="status-line"></span>
     </div>

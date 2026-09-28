@@ -1,6 +1,7 @@
 'use strict';
 
-const folderInput = document.getElementById('folderInput');
+const folderInputFallback = document.getElementById('folderInputFallback');
+const chooseFolderBtn = document.getElementById('chooseFolderBtn');
 const folderLabelEl = document.getElementById('folderLabel');
 const uploadBtn = document.getElementById('uploadBtn');
 const uploadStatusEl = document.getElementById('uploadStatus');
@@ -21,7 +22,6 @@ const selected = new Set(); // controller names selected via card checkboxes
 init();
 
 function init() {
-  folderInput.addEventListener('change', onFolderChosen);
   uploadBtn.addEventListener('click', onUploadClicked);
   refreshBtn.addEventListener('click', () => refreshStatus());
   selectAllBtn.addEventListener('click', selectAll);
@@ -30,7 +30,17 @@ function init() {
   restoreSelectedBtn.addEventListener('click', restoreSelected);
   updateSelectedBtn.addEventListener('click', () => updateToXlights([...selected]));
 
-  document.querySelector('.upload-picker').addEventListener('click', () => folderInput.click());
+  // Prefer the File System Access API: it grants access to just the picked
+  // folder without eagerly enumerating every nested file, so it doesn't
+  // trigger the browser's "Upload N files to this site?" warning the way
+  // <input webkitdirectory> does on a real (large) xLights show directory.
+  // Fall back to the classic picker on browsers that don't support it (e.g. Safari).
+  if (window.showDirectoryPicker) {
+    chooseFolderBtn.addEventListener('click', chooseFolderViaFileSystemAccess);
+  } else {
+    folderInputFallback.addEventListener('change', onFolderChosenFallback);
+    chooseFolderBtn.addEventListener('click', () => folderInputFallback.click());
+  }
 
   loadUploadStatus().then(hadUpload => {
     if (hadUpload) refreshStatus();
@@ -56,19 +66,48 @@ async function loadUploadStatus() {
   }
 }
 
-function onFolderChosen() {
-  const files = Array.from(folderInput.files);
-  const networksFile = files.find(f => f.name === 'xlights_networks.xml');
-  const effectsFile = files.find(f => f.name === 'xlights_rgbeffects.xml');
+// File System Access API: reads only the picked folder's top-level entries
+// (no recursion into subfolders like Christmas 2023/, RenderCache/, etc.),
+// so it never needs permission for more than the two files it looks for.
+async function chooseFolderViaFileSystemAccess() {
+  let dirHandle;
+  try {
+    dirHandle = await window.showDirectoryPicker({ id: 'xlights-show', mode: 'read' });
+  } catch (err) {
+    if (err.name !== 'AbortError') setSummary(`Could not open folder picker: ${err.message}`, true);
+    return;
+  }
 
+  let networksFile = null;
+  let effectsFile = null;
+  for await (const entry of dirHandle.values()) {
+    if (entry.kind !== 'file') continue; // top-level only — don't descend into subfolders
+    if (entry.name === 'xlights_networks.xml') networksFile = await entry.getFile();
+    else if (entry.name === 'xlights_rgbeffects.xml') effectsFile = await entry.getFile();
+  }
+
+  applyChosenFiles(networksFile, effectsFile, dirHandle.name);
+}
+
+// Fallback for browsers without the File System Access API (e.g. Safari).
+// Uses the classic recursive directory input, which will show the browser's
+// bulk-file-count warning on a large xLights show directory.
+function onFolderChosenFallback() {
+  const files = Array.from(folderInputFallback.files);
+  const networksFile = files.find(f => f.name === 'xlights_networks.xml') || null;
+  const effectsFile = files.find(f => f.name === 'xlights_rgbeffects.xml') || null;
+  const folderLabel = (files[0]?.webkitRelativePath || '').split('/')[0] || 'xLights show';
+  applyChosenFiles(networksFile, effectsFile, folderLabel);
+}
+
+function applyChosenFiles(networksFile, effectsFile, folderLabel) {
   if (!networksFile || !effectsFile) {
-    folderLabelEl.textContent = 'Folder must contain xlights_networks.xml and xlights_rgbeffects.xml';
+    folderLabelEl.textContent = 'Folder must directly contain xlights_networks.xml and xlights_rgbeffects.xml';
     uploadBtn.disabled = true;
     pendingUpload = null;
     return;
   }
 
-  const folderLabel = (files[0].webkitRelativePath || '').split('/')[0] || 'xLights show';
   folderLabelEl.textContent = `${folderLabel} (ready to upload)`;
   pendingUpload = { networksFile, effectsFile, folderLabel };
   uploadBtn.disabled = false;
