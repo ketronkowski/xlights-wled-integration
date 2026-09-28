@@ -242,7 +242,7 @@ function buildPairedCard(cv) {
     <div class="card-actions">
       <button class="backup-now" ${reachable ? '' : 'disabled'}>Backup Now</button>
       <button class="restore-latest" ${lastBackup && reachable ? '' : 'disabled'}>Restore Latest</button>
-      <button class="update-xlights" ${reachable && sync.cls !== 'ok' ? '' : 'disabled'}>Update to xLights</button>
+      <button class="update-xlights" ${reachable && sync.cls !== 'ok' ? '' : 'disabled'}>Update segments</button>
     </div>
   `;
 
