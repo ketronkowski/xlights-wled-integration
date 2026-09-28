@@ -21,6 +21,9 @@
     <div class="bar-row">
       <button id="refreshBtn">Refresh Status</button>
       <span class="sep"></span>
+      <button id="cardViewBtn" class="view-toggle" type="button">Card View</button>
+      <button id="listViewBtn" class="view-toggle" type="button">List View</button>
+      <span class="sep"></span>
       <button id="selectAllBtn">Select All</button>
       <button id="selectNoneBtn">Select None</button>
       <span class="sep"></span>
@@ -32,8 +35,13 @@
     <div id="summaryLine" class="summary-line"></div>
   </header>
 
-  <main id="cardGrid" class="card-grid">
-    <p class="empty-hint">Upload an xLights show folder to see your WLED devices here.</p>
+  <main class="views">
+    <div id="cardGrid" class="card-grid">
+      <p class="empty-hint">Upload an xLights show folder to see your WLED devices here.</p>
+    </div>
+    <div id="listGrid" class="list-view" hidden>
+      <p class="empty-hint">Upload an xLights show folder to see your WLED devices here.</p>
+    </div>
   </main>
 
   <script src="app.js"></script>
