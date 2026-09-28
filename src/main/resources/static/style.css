@@ -3,11 +3,18 @@
   --ok: #2e7d32;
   --warn: #b26a00;
   --err: #c62828;
-  /* Explicit solid colors, not the "canvas" system keyword — that keyword
-     doesn't reliably resolve to an opaque color in every browser, which let
-     scrolled card content bleed through the sticky top bar. */
-  --bg-card: light-dark(#ffffff, #111318);
+  /* Explicit solid colors, not the "canvas" system keyword or the light-dark()
+     function — neither reliably resolves to an opaque color in every browser
+     (e.g. embedded/older WebKit views), which let scrolled card content bleed
+     through the sticky top bar. prefers-color-scheme has much broader support. */
+  --bg-card: #ffffff;
   --border: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-card: #111318;
+  }
 }
 
 * { box-sizing: border-box; }
