@@ -189,8 +189,11 @@ function renderCards() {
   updateBulkButtons();
 }
 
+function reachBadge(reachable) {
+  return reachable ? { cls: 'ok', text: 'Reachable' } : { cls: 'err', text: 'Unreachable' };
+}
+
 function syncBadge(cv) {
-  if (!cv.wledDevice) return { cls: 'err', text: 'Unreachable' };
   const issues = cv.segmentValidations.filter(sv => sv.status !== 'OK').length
     + (cv.orphanSegments ? cv.orphanSegments.length : 0)
     + (cv.totalLedsMatch ? 0 : 1);
@@ -214,7 +217,8 @@ function buildPairedCard(cv) {
   const name = cv.xLightsController.name;
   const reachable = !!cv.wledDevice;
   const ip = (cv.wledDevice && cv.wledDevice.ipAddress) || cv.xLightsController.ipAddress || '';
-  const sync = syncBadge(cv);
+  const reach = reachBadge(reachable);
+  const sync = reachable ? syncBadge(cv) : null;
   const backup = backupBadge(name);
   const lastBackup = latestBackupFor(name);
 
@@ -231,7 +235,8 @@ function buildPairedCard(cv) {
       </label>
     </div>
     <div class="badges">
-      <span class="badge ${sync.cls}">${escapeHtml(sync.text)}</span>
+      <span class="badge ${reach.cls}">${escapeHtml(reach.text)}</span>
+      ${sync ? `<span class="badge ${sync.cls}">${escapeHtml(sync.text)}</span>` : ''}
       <span class="badge ${backup.cls}">${escapeHtml(backup.text)}</span>
     </div>
     <div class="card-actions">

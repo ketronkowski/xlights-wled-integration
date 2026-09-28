@@ -2,7 +2,7 @@
   color-scheme: light dark;
   --ok: #2e7d32;
   --warn: #b26a00;
-  --err: #999;
+  --err: #c62828;
   --bg-card: canvas;
   --border: color-mix(in srgb, currentColor 20%, transparent);
 }
