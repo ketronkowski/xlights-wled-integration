@@ -171,9 +171,13 @@ function renderCards() {
   cardGrid.innerHTML = '';
   if (!report) return;
 
+  // Note: report.unpairedXlightsControllers is NOT a separate set of controllers —
+  // it's the subset of controllerValidations where wledDevice is null. Rendering
+  // both would show every unreachable controller twice; controllerValidations alone
+  // (via buildPairedCard, which already handles the unpaired/unreachable case) is
+  // the complete list of xLights controllers.
   const cards = [
     ...report.controllerValidations.map(buildPairedCard),
-    ...report.unpairedXlightsControllers.map(buildUnpairedXlightsCard),
     ...report.unpairedWledDevices.map(buildUnpairedWledCard),
   ];
 
@@ -247,23 +251,6 @@ function buildPairedCard(cv) {
   card.querySelector('.restore-latest').addEventListener('click', () => restoreOne(name, ip, lastBackup));
   card.querySelector('.update-xlights').addEventListener('click', () => updateToXlights([name]));
 
-  return card;
-}
-
-function buildUnpairedXlightsCard(ctrl) {
-  const card = document.createElement('div');
-  card.className = 'card';
-  card.innerHTML = `
-    <div class="card-header">
-      <div>
-        <span class="card-title">${escapeHtml(ctrl.name)}</span>
-        <span class="card-ip">${escapeHtml(ctrl.ipAddress || 'no address')}</span>
-      </div>
-    </div>
-    <div class="badges">
-      <span class="badge err">No device found at configured address</span>
-    </div>
-  `;
   return card;
 }
 
