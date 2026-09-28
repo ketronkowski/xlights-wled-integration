@@ -11,6 +11,7 @@ Keep your [xLights](https://xlights.org/) show layout and your live [WLED](https
   <img alt="Platforms" src="https://img.shields.io/badge/platform-arm64%20%7C%20amd64-informational">
   <a href="https://github.com/ketronkowski/xlights-wled-integration/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/ketronkowski/xlights-wled-integration"></a>
   <img alt="Status" src="https://img.shields.io/badge/status-personal%20homelab%20project-lightgrey">
+  <a href="CONTRIBUTING.md"><img alt="PRs Welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen"></a>
 </p>
 
 ## Why this exists
@@ -133,3 +134,9 @@ If you're standing this up on your own cluster, here's what it expects:
 ## CI/CD
 
 Every push to `main` runs: **test** → **build & push** a multi-arch image to `ghcr.io/ketronkowski/xlights-wled-integration` → **patch** the GitOps deploy repo's image tag, which ArgoCD then syncs automatically. Pull requests only run the test stage.
+
+`main` is a protected branch — every change, including the maintainer's own, goes through a pull request with passing CI before it merges.
+
+## Contributing
+
+Bug reports, feature ideas, and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how to file an issue or send a PR.
