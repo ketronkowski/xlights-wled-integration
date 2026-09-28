@@ -13,22 +13,32 @@ const restoreSelectedBtn = document.getElementById('restoreSelectedBtn');
 const updateSelectedBtn = document.getElementById('updateSelectedBtn');
 const summaryLine = document.getElementById('summaryLine');
 const cardGrid = document.getElementById('cardGrid');
+const listGrid = document.getElementById('listGrid');
+const cardViewBtn = document.getElementById('cardViewBtn');
+const listViewBtn = document.getElementById('listViewBtn');
 
 let report = null;          // last ValidationReport
 let backups = [];           // last WledBackupRecord[]
 let pendingUpload = null;   // { networksFile, effectsFile, folderLabel }
-const selected = new Set(); // controller names selected via card checkboxes
+const selected = new Set(); // controller names selected via card/list checkboxes
+
+const VIEW_STORAGE_KEY = 'xlights-wled-view';
+let currentView = localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'card';
 
 init();
 
 function init() {
   uploadBtn.addEventListener('click', onUploadClicked);
   refreshBtn.addEventListener('click', () => refreshStatus());
+  cardViewBtn.addEventListener('click', () => setView('card'));
+  listViewBtn.addEventListener('click', () => setView('list'));
   selectAllBtn.addEventListener('click', selectAll);
   selectNoneBtn.addEventListener('click', selectNone);
   backupSelectedBtn.addEventListener('click', backupSelected);
   restoreSelectedBtn.addEventListener('click', restoreSelected);
   updateSelectedBtn.addEventListener('click', () => updateToXlights([...selected]));
+
+  setView(currentView);
 
   // Prefer the File System Access API: it grants access to just the picked
   // folder without eagerly enumerating every nested file, so it doesn't
@@ -156,13 +166,35 @@ async function refreshStatus() {
     report = await reportRes.json();
     backups = await backupsRes.json();
     selected.clear();
-    renderCards();
+    renderCurrentView();
     setSummary('');
   } catch (err) {
     setSummary(`Refresh failed: ${err.message}`, true);
   } finally {
     refreshBtn.disabled = false;
   }
+}
+
+// ── View toggle ──────────────────────────────────────────────────────────
+
+function setView(view) {
+  currentView = view;
+  localStorage.setItem(VIEW_STORAGE_KEY, view);
+  cardGrid.hidden = view !== 'card';
+  listGrid.hidden = view !== 'list';
+  cardViewBtn.classList.toggle('active', view === 'card');
+  listViewBtn.classList.toggle('active', view === 'list');
+  // Only re-render once we actually have data — otherwise this would wipe
+  // out the static "upload a folder" hint markup for the view being shown.
+  if (report) renderCurrentView();
+}
+
+function renderCurrentView() {
+  if (currentView === 'list') renderList(); else renderCards();
+}
+
+function activeContainer() {
+  return currentView === 'list' ? listGrid : cardGrid;
 }
 
 // ── Card rendering ───────────────────────────────────────────────────────
@@ -281,10 +313,105 @@ function buildUnpairedWledCard(dev) {
   return card;
 }
 
+// ── List rendering ───────────────────────────────────────────────────────
+
+function renderList() {
+  listGrid.innerHTML = '';
+  if (!report) return;
+
+  // Same source data as renderCards() — see the note above about
+  // unpairedXlightsControllers being a subset of controllerValidations.
+  const rows = [
+    ...report.controllerValidations.map(buildListRow),
+    ...report.unpairedWledDevices.map(buildUnpairedWledRow),
+  ];
+
+  if (rows.length === 0) {
+    listGrid.innerHTML = '<p class="empty-hint">No controllers found in the uploaded xLights config.</p>';
+  } else {
+    const header = document.createElement('div');
+    header.className = 'list-header';
+    header.innerHTML = `
+      <span></span>
+      <span>Name / IP</span>
+      <span>Reachable</span>
+      <span>Sync</span>
+      <span>Backup</span>
+      <span>Actions</span>
+    `;
+    listGrid.appendChild(header);
+    rows.forEach(row => listGrid.appendChild(row));
+  }
+  updateBulkButtons();
+}
+
+function buildListRow(cv) {
+  const name = cv.xLightsController.name;
+  const reachable = !!cv.wledDevice;
+  const ip = (cv.wledDevice && cv.wledDevice.ipAddress) || cv.xLightsController.ipAddress || '';
+  const reach = reachBadge(reachable);
+  const sync = reachable ? syncBadge(cv) : null;
+  const backup = backupBadge(name);
+  const lastBackup = latestBackupFor(name);
+
+  const row = document.createElement('div');
+  row.className = 'list-row';
+  row.innerHTML = `
+    <label class="list-select">
+      <input type="checkbox" class="select-box" ${reachable ? '' : 'disabled'} />
+    </label>
+    <div class="list-name-ip">
+      <span class="list-name">${escapeHtml(name)}</span>
+      <span class="list-ip">${escapeHtml(ip || 'no address')}</span>
+    </div>
+    <span class="badge ${reach.cls}">${escapeHtml(reach.text)}</span>
+    ${sync ? `<span class="badge ${sync.cls}">${escapeHtml(sync.text)}</span>` : '<span></span>'}
+    <span class="badge ${backup.cls}">${escapeHtml(backup.text)}</span>
+    <div class="list-actions">
+      <button class="backup-now" ${reachable ? '' : 'disabled'}>Backup Now</button>
+      <button class="restore-latest" ${lastBackup && reachable ? '' : 'disabled'}>Restore Latest</button>
+      <button class="update-xlights" ${reachable && sync.cls !== 'ok' ? '' : 'disabled'}>Update segments</button>
+    </div>
+  `;
+
+  const checkbox = row.querySelector('.select-box');
+  checkbox.checked = selected.has(name);
+  checkbox.addEventListener('change', e => {
+    if (e.target.checked) selected.add(name); else selected.delete(name);
+    updateBulkButtons();
+  });
+  row.querySelector('.backup-now').addEventListener('click', () => backupNow(name, ip));
+  row.querySelector('.restore-latest').addEventListener('click', () => restoreOne(name, ip, lastBackup));
+  row.querySelector('.update-xlights').addEventListener('click', () => updateToXlights([name]));
+
+  return row;
+}
+
+function buildUnpairedWledRow(dev) {
+  const backup = backupBadge(dev.name);
+  const row = document.createElement('div');
+  row.className = 'list-row';
+  row.innerHTML = `
+    <span></span>
+    <div class="list-name-ip">
+      <span class="list-name">${escapeHtml(dev.name)}</span>
+      <span class="list-ip">${escapeHtml(dev.ipAddress)} · not in xLights config</span>
+    </div>
+    <span></span>
+    <span></span>
+    <span class="badge ${backup.cls}">${escapeHtml(backup.text)}</span>
+    <div class="list-actions">
+      <button class="backup-now">Backup Now</button>
+    </div>
+  `;
+  row.querySelector('.backup-now').addEventListener('click', () => backupNow(dev.name, dev.ipAddress));
+  return row;
+}
+
 // ── Selection ────────────────────────────────────────────────────────────
 
 function selectAll() {
-  cardGrid.querySelectorAll('.select-box:not(:disabled)').forEach(cb => { cb.checked = true; });
+  activeContainer().querySelectorAll('.select-box:not(:disabled)').forEach(cb => { cb.checked = true; });
   report.controllerValidations
     .filter(cv => cv.wledDevice)
     .forEach(cv => selected.add(cv.xLightsController.name));
@@ -292,7 +419,7 @@ function selectAll() {
 }
 
 function selectNone() {
-  cardGrid.querySelectorAll('.select-box').forEach(cb => { cb.checked = false; });
+  activeContainer().querySelectorAll('.select-box').forEach(cb => { cb.checked = false; });
   selected.clear();
   updateBulkButtons();
 }

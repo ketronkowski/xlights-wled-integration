@@ -72,6 +72,12 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 button.action { border-color: color-mix(in srgb, var(--ok) 60%, var(--border)); }
 button.action.danger { border-color: color-mix(in srgb, #c62828 60%, var(--border)); }
 
+button.view-toggle.active {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  border-color: color-mix(in srgb, currentColor 40%, var(--border));
+  font-weight: 600;
+}
+
 .upload-picker {
   display: inline-flex;
   align-items: center;
@@ -92,6 +98,15 @@ button.action.danger { border-color: color-mix(in srgb, #c62828 60%, var(--borde
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1rem;
+}
+
+/* Author-stylesheet display rules above/below win over the UA stylesheet's
+   [hidden] { display: none } regardless of specificity (origin beats
+   specificity in the cascade), so the hidden attribute must be re-asserted
+   explicitly here or both views render stacked on top of each other. */
+.card-grid[hidden],
+.list-view[hidden] {
+  display: none;
 }
 
 .empty-hint {
@@ -146,3 +161,76 @@ button.action.danger { border-color: color-mix(in srgb, #c62828 60%, var(--borde
   align-items: center;
   gap: 0.4rem;
 }
+
+/* ── List view ────────────────────────────────────────────────────────── */
+
+.list-view {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.list-header,
+.list-row {
+  display: grid;
+  /* The last column is a fixed width, not auto/fr: .list-header and each
+     .list-row are separate grid containers, and an `auto` track is sized
+     from that container's own content — the header's "Actions" text is
+     narrow while a row's three buttons are wide, so an auto/fr track would
+     make the header and rows compute different column widths and
+     misalign. A fixed width keeps every row (and the header) identical. */
+  grid-template-columns: 2rem minmax(160px, 2fr) minmax(90px, 1fr) minmax(120px, 1fr) minmax(140px, 1fr) 340px;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+}
+
+.list-header {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.6;
+  border-bottom: 1px solid var(--border);
+}
+
+.list-row {
+  border-bottom: 1px solid var(--border);
+}
+
+.list-row:last-child { border-bottom: none; }
+
+.list-row:hover { background: color-mix(in srgb, currentColor 5%, transparent); }
+
+.list-select {
+  display: flex;
+  align-items: center;
+}
+
+.list-name-ip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.list-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-ip { font-size: 0.8rem; opacity: 0.65; }
+
+.list-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.list-actions button { font-size: 0.78rem; padding: 0.25rem 0.5rem; }
+
+.list-view .empty-hint { padding: 1rem 0.75rem; margin: 0; }
