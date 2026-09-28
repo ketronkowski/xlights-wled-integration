@@ -60,6 +60,7 @@ flowchart LR
 ```
 
 - **One container, no separate frontend build.** Spring MVC serves the REST API and a small vanilla-JS/HTML/CSS UI from the same origin (`src/main/resources/static/`) — no React/Vite pipeline, no CORS to configure.
+- **Card or list view.** Controllers render as a card grid by default, or toggle to a compact table-style list when you've got more devices than comfortably fit as cards — both share the same selection state and bulk actions, and your choice persists across reloads via `localStorage`.
 - **Browser-side folder access, not a file upload form.** The UI uses the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_Access_API) to read `xlights_networks.xml` / `xlights_rgbeffects.xml` directly out of your xLights show folder and POSTs their contents as JSON — no multipart upload, and it only ever touches the two files it needs (not every rendered sequence/media file in the show directory).
 - **Virtual threads instead of a reactive stack.** The outbound calls to WLED devices used to go through WebFlux's `WebClient`, but every call was immediately `.block()`-ed anyway — so it's plain Spring MVC + `RestClient`, with `spring.threads.virtual.enabled=true` keeping the parallel per-device fetches cheap.
 - **A tiny PVC is the only state.** The uploaded xLights XML and every WLED backup (`cfg.json`/`presets.json`, a few KB each) live under one mounted volume — no database.
