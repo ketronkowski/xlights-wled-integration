@@ -16,11 +16,43 @@ const cardGrid = document.getElementById('cardGrid');
 const listGrid = document.getElementById('listGrid');
 const cardViewBtn = document.getElementById('cardViewBtn');
 const listViewBtn = document.getElementById('listViewBtn');
+const filterInputs = {
+  name: document.getElementById('filterName'),
+  ip: document.getElementById('filterIp'),
+  reachable: document.getElementById('filterReachable'),
+  sync: document.getElementById('filterSync'),
+  backup: document.getElementById('filterBackup'),
+};
+const showSelectedOnlyToggle = document.getElementById('showSelectedOnlyToggle');
+const selectionSummaryEl = document.getElementById('selectionSummary');
 
 let report = null;          // last ValidationReport
 let backups = [];           // last WledBackupRecord[]
 let pendingUpload = null;   // { networksFile, effectsFile, folderLabel }
 const selected = new Set(); // controller names selected via card/list checkboxes
+
+// Raw regex strings, one per field; empty = no filter for that field. All
+// non-empty filters AND together. Matched case-insensitively against the
+// exact text each field's badge/cell renders (see FILTER_FIELD_KEY below) —
+// not a separate notion of the underlying value — so what you type is always
+// consistent with what's on screen. Note "Reachable" text is literally
+// "Reachable"/"Unreachable", so e.g. typing "reach" matches both; that's
+// expected substring-regex behavior, not a bug.
+const filters = { name: '', ip: '', reachable: '', sync: '', backup: '' };
+const FILTER_FIELD_KEY = { name: 'name', ip: 'ip', reachable: 'reachableText', sync: 'syncText', backup: 'backupText' };
+
+// The last field-filtered row set — recomputed on every render. Used by
+// selectAll()/the selection summary so "select all" and "how many of my
+// selection are currently hidden" both stay scoped to what's actually
+// visible under the active filters.
+let visibleRows = [];
+let totalRowCount = 0; // unfiltered row count, so "0 matches" can distinguish a narrow filter from truly no data
+
+// Applied as a separate, later display-time restriction — never folded into
+// visibleRows itself. visibleRows is also what selectAll() scopes against and
+// what the "hidden by filter" count is measured against; if this were folded
+// in, turning it on would make Select All a no-op and would corrupt that count.
+let showSelectedOnly = false;
 
 const VIEW_STORAGE_KEY = 'xlights-wled-view';
 let currentView = localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'card';
@@ -37,6 +69,18 @@ function init() {
   backupSelectedBtn.addEventListener('click', backupSelected);
   restoreSelectedBtn.addEventListener('click', restoreSelected);
   updateSelectedBtn.addEventListener('click', () => updateToXlights([...selected]));
+
+  Object.entries(filterInputs).forEach(([field, input]) => {
+    input.addEventListener('input', () => {
+      filters[field] = input.value;
+      renderCurrentView();
+    });
+  });
+
+  showSelectedOnlyToggle.addEventListener('change', e => {
+    showSelectedOnly = e.target.checked;
+    renderCurrentView();
+  });
 
   setView(currentView);
 
@@ -190,33 +234,108 @@ function setView(view) {
 }
 
 function renderCurrentView() {
-  if (currentView === 'list') renderList(); else renderCards();
+  const allRows = buildRowModel();
+  totalRowCount = allRows.length;
+  const { rows, invalidFields } = applyFieldFilters(allRows, filters);
+  visibleRows = rows;
+  updateFilterInputValidity(invalidFields);
+
+  const rowsForDisplay = showSelectedOnly ? rows.filter(r => selected.has(r.name)) : rows;
+  if (currentView === 'list') renderList(rowsForDisplay); else renderCards(rowsForDisplay);
 }
 
-function activeContainer() {
-  return currentView === 'list' ? listGrid : cardGrid;
+function noRowsMessage() {
+  return totalRowCount > 0
+    ? 'No controllers match the current filters.'
+    : 'No controllers found in the uploaded xLights config.';
+}
+
+// ── Filtering ────────────────────────────────────────────────────────────
+
+function applyFieldFilters(rows, filterValues) {
+  const compiled = {};
+  const invalidFields = new Set();
+  for (const [field, pattern] of Object.entries(filterValues)) {
+    if (!pattern) continue;
+    try {
+      compiled[field] = new RegExp(pattern, 'i');
+    } catch {
+      // Invalid regex (e.g. an unbalanced paren) — that field matches
+      // nothing rather than throwing and breaking the whole render.
+      invalidFields.add(field);
+    }
+  }
+  const activeFields = Object.keys(compiled).concat([...invalidFields]);
+  const rowsMatching = rows.filter(row =>
+    activeFields.every(field => {
+      const regex = compiled[field];
+      return regex ? regex.test(String(row[FILTER_FIELD_KEY[field]])) : false;
+    })
+  );
+  return { rows: rowsMatching, invalidFields };
+}
+
+function updateFilterInputValidity(invalidFields) {
+  Object.entries(filterInputs).forEach(([field, input]) => {
+    input.classList.toggle('invalid', invalidFields.has(field));
+  });
+}
+
+// ── Unified row model ────────────────────────────────────────────────────
+//
+// Both views ultimately render the same two data sources (paired xLights/WLED
+// controllers + unpaired WLED devices) — this maps them into one common shape
+// so filtering/sorting is written once and shared, rather than duplicated per
+// view. Field-value logic (what counts as "reachable", how sync/backup text
+// is derived) is never reinvented here — it just calls the same badge
+// functions every render path already used.
+//
+// Note: report.unpairedXlightsControllers is NOT a separate set of controllers —
+// it's the subset of controllerValidations where wledDevice is null. Including
+// both here would show every unreachable controller twice; controllerValidations
+// alone (paired.reachable === false covers it) is the complete list.
+
+function buildRowModel() {
+  if (!report) return [];
+
+  const paired = report.controllerValidations.map(cv => {
+    const name = cv.xLightsController.name;
+    const reachable = !!cv.wledDevice;
+    const ip = (cv.wledDevice && cv.wledDevice.ipAddress) || cv.xLightsController.ipAddress || '';
+    const reach = reachBadge(reachable);
+    const sync = reachable ? syncBadge(cv) : null;
+    const backup = backupBadge(name);
+    return {
+      kind: 'paired', raw: cv, name, ip, reachable, selectable: reachable,
+      reachableText: reach.text, reachableCls: reach.cls,
+      syncText: sync ? sync.text : '', syncCls: sync ? sync.cls : '',
+      backupText: backup.text, backupCls: backup.cls,
+    };
+  });
+
+  const unpaired = report.unpairedWledDevices.map(dev => {
+    const backup = backupBadge(dev.name);
+    return {
+      // Always reachable by construction — it only appears here because the
+      // backend successfully fetched live data from it.
+      kind: 'unpaired', raw: dev, name: dev.name, ip: dev.ipAddress, reachable: true, selectable: true,
+      reachableText: '', reachableCls: '', syncText: '', syncCls: '',
+      backupText: backup.text, backupCls: backup.cls,
+    };
+  });
+
+  return [...paired, ...unpaired];
 }
 
 // ── Card rendering ───────────────────────────────────────────────────────
 
-function renderCards() {
+function renderCards(rows) {
   cardGrid.innerHTML = '';
-  if (!report) return;
 
-  // Note: report.unpairedXlightsControllers is NOT a separate set of controllers —
-  // it's the subset of controllerValidations where wledDevice is null. Rendering
-  // both would show every unreachable controller twice; controllerValidations alone
-  // (via buildPairedCard, which already handles the unpaired/unreachable case) is
-  // the complete list of xLights controllers.
-  const cards = [
-    ...report.controllerValidations.map(buildPairedCard),
-    ...report.unpairedWledDevices.map(buildUnpairedWledCard),
-  ];
-
-  if (cards.length === 0) {
-    cardGrid.innerHTML = '<p class="empty-hint">No controllers found in the uploaded xLights config.</p>';
+  if (rows.length === 0) {
+    cardGrid.innerHTML = `<p class="empty-hint">${escapeHtml(noRowsMessage())}</p>`;
   } else {
-    cards.forEach(c => cardGrid.appendChild(c));
+    rows.forEach(row => cardGrid.appendChild(buildCard(row)));
   }
   updateBulkButtons();
 }
@@ -245,14 +364,9 @@ function backupBadge(controllerName) {
     : { cls: 'warn', text: 'Never backed up' };
 }
 
-function buildPairedCard(cv) {
-  const name = cv.xLightsController.name;
-  const reachable = !!cv.wledDevice;
-  const ip = (cv.wledDevice && cv.wledDevice.ipAddress) || cv.xLightsController.ipAddress || '';
-  const reach = reachBadge(reachable);
-  const sync = reachable ? syncBadge(cv) : null;
-  const backup = backupBadge(name);
-  const lastBackup = latestBackupFor(name);
+function buildCard(row) {
+  const { name, ip, reachable, reachableText, reachableCls, syncText, syncCls, backupText, backupCls, kind } = row;
+  const ipDisplay = kind === 'unpaired' ? `${ip} · not in xLights config` : (ip || 'no address');
 
   const card = document.createElement('div');
   card.className = 'card';
@@ -260,21 +374,16 @@ function buildPairedCard(cv) {
     <div class="card-header">
       <div>
         <span class="card-title">${escapeHtml(name)}</span>
-        <span class="card-ip">${escapeHtml(ip || 'no address')}</span>
+        <span class="card-ip">${escapeHtml(ipDisplay)}</span>
       </div>
       <label class="card-select">
         <input type="checkbox" class="select-box" ${reachable ? '' : 'disabled'} />
       </label>
     </div>
     <div class="badges">
-      <span class="badge ${reach.cls}">${escapeHtml(reach.text)}</span>
-      ${sync ? `<span class="badge ${sync.cls}">${escapeHtml(sync.text)}</span>` : ''}
-      <span class="badge ${backup.cls}">${escapeHtml(backup.text)}</span>
-    </div>
-    <div class="card-actions">
-      <button class="backup-now" ${reachable ? '' : 'disabled'}>Backup Now</button>
-      <button class="restore-latest" ${lastBackup && reachable ? '' : 'disabled'}>Restore Latest</button>
-      <button class="update-xlights" ${reachable && sync.cls !== 'ok' ? '' : 'disabled'}>Update segments</button>
+      ${reachableText ? `<span class="badge ${reachableCls}">${escapeHtml(reachableText)}</span>` : ''}
+      ${syncText ? `<span class="badge ${syncCls}">${escapeHtml(syncText)}</span>` : ''}
+      <span class="badge ${backupCls}">${escapeHtml(backupText)}</span>
     </div>
   `;
 
@@ -284,144 +393,118 @@ function buildPairedCard(cv) {
     if (e.target.checked) selected.add(name); else selected.delete(name);
     updateBulkButtons();
   });
-  card.querySelector('.backup-now').addEventListener('click', () => backupNow(name, ip));
-  card.querySelector('.restore-latest').addEventListener('click', () => restoreOne(name, ip, lastBackup));
-  card.querySelector('.update-xlights').addEventListener('click', () => updateToXlights([name]));
 
-  return card;
-}
-
-function buildUnpairedWledCard(dev) {
-  const backup = backupBadge(dev.name);
-  const card = document.createElement('div');
-  card.className = 'card';
-  card.innerHTML = `
-    <div class="card-header">
-      <div>
-        <span class="card-title">${escapeHtml(dev.name)}</span>
-        <span class="card-ip">${escapeHtml(dev.ipAddress)} · not in xLights config</span>
-      </div>
-    </div>
-    <div class="badges">
-      <span class="badge ${backup.cls}">${escapeHtml(backup.text)}</span>
-    </div>
-    <div class="card-actions">
-      <button class="backup-now">Backup Now</button>
-    </div>
-  `;
-  card.querySelector('.backup-now').addEventListener('click', () => backupNow(dev.name, dev.ipAddress));
   return card;
 }
 
 // ── List rendering ───────────────────────────────────────────────────────
 
-function renderList() {
+const SORT_FIELD_KEY = { name: 'name', ip: 'ip', reachable: 'reachableText', sync: 'syncText', backup: 'backupText' };
+const LIST_COLUMNS = [
+  { key: null, label: '' },
+  { key: 'name', label: 'Name' },
+  { key: 'ip', label: 'IP' },
+  { key: 'reachable', label: 'Reachable' },
+  { key: 'sync', label: 'Sync' },
+  { key: 'backup', label: 'Backup' },
+];
+
+let sortColumn = null; // one of LIST_COLUMNS' keys, or null for unsorted (upload order)
+let sortDir = 'asc';    // 'asc' | 'desc'
+
+function applySort(rows) {
+  if (!sortColumn) return rows;
+  const field = SORT_FIELD_KEY[sortColumn];
+  const dir = sortDir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) =>
+    dir * String(a[field]).localeCompare(String(b[field]), undefined, { sensitivity: 'base', numeric: true }));
+}
+
+function buildListHeader() {
+  const header = document.createElement('div');
+  header.className = 'list-header';
+  LIST_COLUMNS.forEach(col => {
+    if (!col.key) { header.appendChild(document.createElement('span')); return; }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'list-sort-btn' + (sortColumn === col.key ? ' active' : '');
+    const arrow = sortColumn === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '';
+    btn.innerHTML = `${escapeHtml(col.label)}<span class="sort-indicator">${arrow}</span>`;
+    btn.addEventListener('click', () => {
+      if (sortColumn === col.key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      else { sortColumn = col.key; sortDir = 'asc'; }
+      renderCurrentView();
+    });
+    header.appendChild(btn);
+  });
+  return header;
+}
+
+function renderList(rows) {
   listGrid.innerHTML = '';
-  if (!report) return;
 
-  // Same source data as renderCards() — see the note above about
-  // unpairedXlightsControllers being a subset of controllerValidations.
-  const rows = [
-    ...report.controllerValidations.map(buildListRow),
-    ...report.unpairedWledDevices.map(buildUnpairedWledRow),
-  ];
+  const sortedRows = applySort(rows);
+  const listRows = sortedRows.map(buildListRow);
 
-  if (rows.length === 0) {
-    listGrid.innerHTML = '<p class="empty-hint">No controllers found in the uploaded xLights config.</p>';
+  listGrid.appendChild(buildListHeader());
+  if (listRows.length === 0) {
+    const hint = document.createElement('p');
+    hint.className = 'empty-hint';
+    hint.textContent = noRowsMessage();
+    listGrid.appendChild(hint);
   } else {
-    const header = document.createElement('div');
-    header.className = 'list-header';
-    header.innerHTML = `
-      <span></span>
-      <span>Name / IP</span>
-      <span>Reachable</span>
-      <span>Sync</span>
-      <span>Backup</span>
-      <span>Actions</span>
-    `;
-    listGrid.appendChild(header);
-    rows.forEach(row => listGrid.appendChild(row));
+    listRows.forEach(row => listGrid.appendChild(row));
   }
   updateBulkButtons();
 }
 
-function buildListRow(cv) {
-  const name = cv.xLightsController.name;
-  const reachable = !!cv.wledDevice;
-  const ip = (cv.wledDevice && cv.wledDevice.ipAddress) || cv.xLightsController.ipAddress || '';
-  const reach = reachBadge(reachable);
-  const sync = reachable ? syncBadge(cv) : null;
-  const backup = backupBadge(name);
-  const lastBackup = latestBackupFor(name);
+function buildListRow(row) {
+  const { name, reachable, reachableText, reachableCls, syncText, syncCls, backupText, backupCls, kind, ip } = row;
+  const ipDisplay = kind === 'unpaired' ? `${ip} · not in xLights config` : (ip || 'no address');
 
-  const row = document.createElement('div');
-  row.className = 'list-row';
-  row.innerHTML = `
+  const el = document.createElement('div');
+  el.className = 'list-row';
+  el.innerHTML = `
     <label class="list-select">
       <input type="checkbox" class="select-box" ${reachable ? '' : 'disabled'} />
     </label>
-    <div class="list-name-ip">
-      <span class="list-name">${escapeHtml(name)}</span>
-      <span class="list-ip">${escapeHtml(ip || 'no address')}</span>
-    </div>
-    <span class="badge ${reach.cls}">${escapeHtml(reach.text)}</span>
-    ${sync ? `<span class="badge ${sync.cls}">${escapeHtml(sync.text)}</span>` : '<span></span>'}
-    <span class="badge ${backup.cls}">${escapeHtml(backup.text)}</span>
-    <div class="list-actions">
-      <button class="backup-now" ${reachable ? '' : 'disabled'}>Backup Now</button>
-      <button class="restore-latest" ${lastBackup && reachable ? '' : 'disabled'}>Restore Latest</button>
-      <button class="update-xlights" ${reachable && sync.cls !== 'ok' ? '' : 'disabled'}>Update segments</button>
-    </div>
+    <span class="list-name">${escapeHtml(name)}</span>
+    <span class="list-ip">${escapeHtml(ipDisplay)}</span>
+    ${reachableText ? `<span class="badge ${reachableCls}">${escapeHtml(reachableText)}</span>` : '<span></span>'}
+    ${syncText ? `<span class="badge ${syncCls}">${escapeHtml(syncText)}</span>` : '<span></span>'}
+    <span class="badge ${backupCls}">${escapeHtml(backupText)}</span>
   `;
 
-  const checkbox = row.querySelector('.select-box');
+  const checkbox = el.querySelector('.select-box');
   checkbox.checked = selected.has(name);
   checkbox.addEventListener('change', e => {
     if (e.target.checked) selected.add(name); else selected.delete(name);
     updateBulkButtons();
   });
-  row.querySelector('.backup-now').addEventListener('click', () => backupNow(name, ip));
-  row.querySelector('.restore-latest').addEventListener('click', () => restoreOne(name, ip, lastBackup));
-  row.querySelector('.update-xlights').addEventListener('click', () => updateToXlights([name]));
 
-  return row;
-}
-
-function buildUnpairedWledRow(dev) {
-  const backup = backupBadge(dev.name);
-  const row = document.createElement('div');
-  row.className = 'list-row';
-  row.innerHTML = `
-    <span></span>
-    <div class="list-name-ip">
-      <span class="list-name">${escapeHtml(dev.name)}</span>
-      <span class="list-ip">${escapeHtml(dev.ipAddress)} · not in xLights config</span>
-    </div>
-    <span></span>
-    <span></span>
-    <span class="badge ${backup.cls}">${escapeHtml(backup.text)}</span>
-    <div class="list-actions">
-      <button class="backup-now">Backup Now</button>
-    </div>
-  `;
-  row.querySelector('.backup-now').addEventListener('click', () => backupNow(dev.name, dev.ipAddress));
-  return row;
+  return el;
 }
 
 // ── Selection ────────────────────────────────────────────────────────────
 
+// Scoped to visibleRows (the current field-filtered set), never the full
+// dataset — checking "Select All" under a filter must only ever select what
+// you can actually see. This also merges into the existing selection rather
+// than replacing it, so a selection built up across several filter passes
+// survives. (Standard guidance for this pattern; see the plan doc for the
+// real-world "unscoped select-all deleted 1900 records instead of the 96
+// visible" cautionary tale that motivated it — this app's "Restore Selected"
+// is exactly the kind of destructive action that makes it worth getting right.)
 function selectAll() {
-  activeContainer().querySelectorAll('.select-box:not(:disabled)').forEach(cb => { cb.checked = true; });
-  report.controllerValidations
-    .filter(cv => cv.wledDevice)
-    .forEach(cv => selected.add(cv.xLightsController.name));
-  updateBulkButtons();
+  visibleRows.filter(r => r.selectable).forEach(r => selected.add(r.name));
+  renderCurrentView();
 }
 
+// Unlike selectAll(), this is a full unscoped reset — simple, predictable,
+// always clears everything regardless of what's currently filtered/visible.
 function selectNone() {
-  activeContainer().querySelectorAll('.select-box').forEach(cb => { cb.checked = false; });
   selected.clear();
-  updateBulkButtons();
+  renderCurrentView();
 }
 
 function updateBulkButtons() {
@@ -429,35 +512,24 @@ function updateBulkButtons() {
   backupSelectedBtn.disabled = !has;
   restoreSelectedBtn.disabled = !has;
   updateSelectedBtn.disabled = !has;
+  updateSelectionSummary();
 }
 
-// ── Per-card actions ─────────────────────────────────────────────────────
-
-async function backupNow(name, ip) {
-  setSummary(`Backing up ${name}…`);
-  try {
-    const res = await fetch(`/api/backups/${encodeURIComponent(name)}?ip=${encodeURIComponent(ip)}`, { method: 'POST' });
-    if (!res.ok) throw new Error(String(res.status));
-    setSummary(`${name}: backed up`);
-    await refreshStatus();
-  } catch (err) {
-    setSummary(`${name}: backup failed — ${err.message}`, true);
+function updateSelectionSummary() {
+  if (selected.size === 0) {
+    selectionSummaryEl.textContent = '';
+    selectionSummaryEl.classList.remove('has-hidden');
+    return;
   }
+  const visibleNames = new Set(visibleRows.map(r => r.name));
+  const hidden = [...selected].filter(n => !visibleNames.has(n)).length;
+  selectionSummaryEl.textContent = hidden > 0
+    ? `${selected.size} selected (${hidden} hidden by filter)`
+    : `${selected.size} selected`;
+  selectionSummaryEl.classList.toggle('has-hidden', hidden > 0);
 }
 
-async function restoreOne(name, ip, backupRecord) {
-  if (!backupRecord) return;
-  const when = timeAgo(backupRecord.timestamp);
-  if (!confirm(`Restore ${name} from the backup taken ${when}? This overwrites the device's current config and reboots it.`)) return;
-  setSummary(`Restoring ${name}…`);
-  try {
-    await doRestore(name, ip, backupRecord);
-    setSummary(`${name}: restored`);
-    await refreshStatus();
-  } catch (err) {
-    setSummary(`${name}: restore failed — ${err.message}`, true);
-  }
-}
+// ── Actions (bulk-only — no per-item buttons remain in either view) ───────
 
 async function doRestore(name, ip, backupRecord) {
   const ts = new Date(backupRecord.timestamp).getTime();
