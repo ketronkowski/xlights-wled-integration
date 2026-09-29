@@ -18,7 +18,7 @@ const cardViewBtn = document.getElementById('cardViewBtn');
 const listViewBtn = document.getElementById('listViewBtn');
 const filterInputs = {
   name: document.getElementById('filterName'),
-  ip: document.getElementById('filterIp'),
+  host: document.getElementById('filterHost'),
   reachable: document.getElementById('filterReachable'),
   sync: document.getElementById('filterSync'),
   backup: document.getElementById('filterBackup'),
@@ -31,15 +31,21 @@ let backups = [];           // last WledBackupRecord[]
 let pendingUpload = null;   // { networksFile, effectsFile, folderLabel }
 const selected = new Set(); // controller names selected via card/list checkboxes
 
-// Raw regex strings, one per field; empty = no filter for that field. All
-// non-empty filters AND together. Matched case-insensitively against the
-// exact text each field's badge/cell renders (see FILTER_FIELD_KEY below) —
-// not a separate notion of the underlying value — so what you type is always
-// consistent with what's on screen. Note "Reachable" text is literally
-// "Reachable"/"Unreachable", so e.g. typing "reach" matches both; that's
-// expected substring-regex behavior, not a bug.
-const filters = { name: '', ip: '', reachable: '', sync: '', backup: '' };
-const FILTER_FIELD_KEY = { name: 'name', ip: 'ip', reachable: 'reachableText', sync: 'syncText', backup: 'backupText' };
+// Two kinds of filter, chosen per field based on whether the field's value
+// space is closed:
+// - name/host are free text, matched as an unanchored, case-insensitive
+//   regex against the raw field value — full regex syntax (.*, [...], etc.)
+//   is intentional, not escaped, since the value space is unbounded.
+// - reachable/sync/backup have a small fixed set of states, so they're
+//   selects compared by exact match against a category value on the row
+//   (reachableCategory/syncCategory/backupCategory) rather than regex against
+//   the rendered badge text — this avoids e.g. "Reachable" as a substring
+//   also matching "Unreachable", and stays correct even though the badge
+//   text itself contains dynamic data (a segment count, a "N ago" timestamp).
+// All non-empty filters AND together.
+const filters = { name: '', host: '', reachable: '', sync: '', backup: '' };
+const FILTER_KIND = { name: 'regex', host: 'regex', reachable: 'select', sync: 'select', backup: 'select' };
+const FILTER_FIELD_KEY = { name: 'name', host: 'ip', reachable: 'reachableCategory', sync: 'syncCategory', backup: 'backupCategory' };
 
 // The last field-filtered row set — recomputed on every render. Used by
 // selectAll()/the selection summary so "select all" and "how many of my
@@ -70,9 +76,13 @@ function init() {
   restoreSelectedBtn.addEventListener('click', restoreSelected);
   updateSelectedBtn.addEventListener('click', () => updateToXlights([...selected]));
 
-  Object.entries(filterInputs).forEach(([field, input]) => {
-    input.addEventListener('input', () => {
-      filters[field] = input.value;
+  Object.entries(filterInputs).forEach(([field, el]) => {
+    // Selects fire 'change', not 'input', in a way that reliably covers
+    // keyboard selection too; text inputs use 'input' to filter live per
+    // keystroke.
+    const eventName = el.tagName === 'SELECT' ? 'change' : 'input';
+    el.addEventListener(eventName, () => {
+      filters[field] = el.value;
       renderCurrentView();
     });
   });
@@ -255,22 +265,26 @@ function noRowsMessage() {
 function applyFieldFilters(rows, filterValues) {
   const compiled = {};
   const invalidFields = new Set();
-  for (const [field, pattern] of Object.entries(filterValues)) {
-    if (!pattern) continue;
+  for (const [field, value] of Object.entries(filterValues)) {
+    if (!value || FILTER_KIND[field] !== 'regex') continue;
     try {
-      compiled[field] = new RegExp(pattern, 'i');
+      compiled[field] = new RegExp(value, 'i');
     } catch {
       // Invalid regex (e.g. an unbalanced paren) — that field matches
       // nothing rather than throwing and breaking the whole render.
       invalidFields.add(field);
     }
   }
-  const activeFields = Object.keys(compiled).concat([...invalidFields]);
+  const activeRegexFields = Object.keys(compiled).concat([...invalidFields]);
+  const activeSelectFields = Object.entries(filterValues)
+    .filter(([field, value]) => FILTER_KIND[field] === 'select' && value);
+
   const rowsMatching = rows.filter(row =>
-    activeFields.every(field => {
+    activeRegexFields.every(field => {
       const regex = compiled[field];
       return regex ? regex.test(String(row[FILTER_FIELD_KEY[field]])) : false;
-    })
+    }) &&
+    activeSelectFields.every(([field, value]) => row[FILTER_FIELD_KEY[field]] === value)
   );
   return { rows: rowsMatching, invalidFields };
 }
@@ -307,9 +321,9 @@ function buildRowModel() {
     const backup = backupBadge(name);
     return {
       kind: 'paired', raw: cv, name, ip, reachable, selectable: reachable,
-      reachableText: reach.text, reachableCls: reach.cls,
-      syncText: sync ? sync.text : '', syncCls: sync ? sync.cls : '',
-      backupText: backup.text, backupCls: backup.cls,
+      reachableText: reach.text, reachableCls: reach.cls, reachableCategory: reachable ? 'reachable' : 'unreachable',
+      syncText: sync ? sync.text : '', syncCls: sync ? sync.cls : '', syncCategory: sync ? (sync.cls === 'ok' ? 'in-sync' : 'needs-update') : '',
+      backupText: backup.text, backupCls: backup.cls, backupCategory: backup.cls === 'ok' ? 'backed-up' : 'never-backed-up',
     };
   });
 
@@ -319,8 +333,9 @@ function buildRowModel() {
       // Always reachable by construction — it only appears here because the
       // backend successfully fetched live data from it.
       kind: 'unpaired', raw: dev, name: dev.name, ip: dev.ipAddress, reachable: true, selectable: true,
-      reachableText: '', reachableCls: '', syncText: '', syncCls: '',
-      backupText: backup.text, backupCls: backup.cls,
+      reachableText: '', reachableCls: '', reachableCategory: 'reachable',
+      syncText: '', syncCls: '', syncCategory: '',
+      backupText: backup.text, backupCls: backup.cls, backupCategory: backup.cls === 'ok' ? 'backed-up' : 'never-backed-up',
     };
   });
 
@@ -403,7 +418,7 @@ const SORT_FIELD_KEY = { name: 'name', ip: 'ip', reachable: 'reachableText', syn
 const LIST_COLUMNS = [
   { key: null, label: '' },
   { key: 'name', label: 'Name' },
-  { key: 'ip', label: 'IP' },
+  { key: 'ip', label: 'Host' },
   { key: 'reachable', label: 'Reachable' },
   { key: 'sync', label: 'Sync' },
   { key: 'backup', label: 'Backup' },
