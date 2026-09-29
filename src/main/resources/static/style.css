@@ -131,7 +131,7 @@ h1 .glyph { color: var(--accent); font-weight: 400; }
   color: var(--text-faint);
 }
 
-.filter-input {
+.filter-input, .filter-select {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   text-transform: none;
@@ -145,7 +145,9 @@ h1 .glyph { color: var(--accent); font-weight: 400; }
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.filter-input:focus-visible { border-color: var(--accent); }
+.filter-select { cursor: pointer; }
+
+.filter-input:focus-visible, .filter-select:focus-visible { border-color: var(--accent); }
 
 .filter-input.invalid {
   border-color: var(--err);

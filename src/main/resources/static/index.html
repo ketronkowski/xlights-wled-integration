@@ -41,10 +41,28 @@
 
     <div class="bar-row filter-bar">
       <label class="filter-field">Name<input type="text" id="filterName" class="filter-input" placeholder="regex…" /></label>
-      <label class="filter-field">IP<input type="text" id="filterIp" class="filter-input" placeholder="regex…" /></label>
-      <label class="filter-field">Reachable<input type="text" id="filterReachable" class="filter-input" placeholder="regex…" /></label>
-      <label class="filter-field">Sync<input type="text" id="filterSync" class="filter-input" placeholder="regex…" /></label>
-      <label class="filter-field">Backup<input type="text" id="filterBackup" class="filter-input" placeholder="regex…" /></label>
+      <label class="filter-field">Host<input type="text" id="filterHost" class="filter-input" placeholder="regex…" /></label>
+      <label class="filter-field">Reachable
+        <select id="filterReachable" class="filter-select">
+          <option value="">All</option>
+          <option value="reachable">Reachable</option>
+          <option value="unreachable">Unreachable</option>
+        </select>
+      </label>
+      <label class="filter-field">Sync
+        <select id="filterSync" class="filter-select">
+          <option value="">All</option>
+          <option value="in-sync">In sync</option>
+          <option value="needs-update">Needs update</option>
+        </select>
+      </label>
+      <label class="filter-field">Backup
+        <select id="filterBackup" class="filter-select">
+          <option value="">All</option>
+          <option value="backed-up">Backed up</option>
+          <option value="never-backed-up">Never backed up</option>
+        </select>
+      </label>
       <span class="sep"></span>
       <label class="filter-field checkbox-field"><input type="checkbox" id="showSelectedOnlyToggle" /> Show selected only</label>
       <span class="sep"></span>
