@@ -190,33 +190,69 @@ function setView(view) {
 }
 
 function renderCurrentView() {
-  if (currentView === 'list') renderList(); else renderCards();
+  const rows = buildRowModel();
+  if (currentView === 'list') renderList(rows); else renderCards(rows);
 }
 
 function activeContainer() {
   return currentView === 'list' ? listGrid : cardGrid;
 }
 
+// ── Unified row model ────────────────────────────────────────────────────
+//
+// Both views ultimately render the same two data sources (paired xLights/WLED
+// controllers + unpaired WLED devices) — this maps them into one common shape
+// so filtering/sorting is written once and shared, rather than duplicated per
+// view. Field-value logic (what counts as "reachable", how sync/backup text
+// is derived) is never reinvented here — it just calls the same badge
+// functions every render path already used.
+//
+// Note: report.unpairedXlightsControllers is NOT a separate set of controllers —
+// it's the subset of controllerValidations where wledDevice is null. Including
+// both here would show every unreachable controller twice; controllerValidations
+// alone (paired.reachable === false covers it) is the complete list.
+
+function buildRowModel() {
+  if (!report) return [];
+
+  const paired = report.controllerValidations.map(cv => {
+    const name = cv.xLightsController.name;
+    const reachable = !!cv.wledDevice;
+    const ip = (cv.wledDevice && cv.wledDevice.ipAddress) || cv.xLightsController.ipAddress || '';
+    const reach = reachBadge(reachable);
+    const sync = reachable ? syncBadge(cv) : null;
+    const backup = backupBadge(name);
+    return {
+      kind: 'paired', raw: cv, name, ip, selectable: true,
+      reachableText: reach.text, reachableCls: reach.cls,
+      syncText: sync ? sync.text : '', syncCls: sync ? sync.cls : '',
+      backupText: backup.text, backupCls: backup.cls,
+    };
+  });
+
+  const unpaired = report.unpairedWledDevices.map(dev => {
+    const backup = backupBadge(dev.name);
+    return {
+      kind: 'unpaired', raw: dev, name: dev.name, ip: dev.ipAddress, selectable: true,
+      reachableText: '', reachableCls: '', syncText: '', syncCls: '',
+      backupText: backup.text, backupCls: backup.cls,
+    };
+  });
+
+  return [...paired, ...unpaired];
+}
+
 // ── Card rendering ───────────────────────────────────────────────────────
 
-function renderCards() {
+function renderCards(rows) {
   cardGrid.innerHTML = '';
-  if (!report) return;
 
-  // Note: report.unpairedXlightsControllers is NOT a separate set of controllers —
-  // it's the subset of controllerValidations where wledDevice is null. Rendering
-  // both would show every unreachable controller twice; controllerValidations alone
-  // (via buildPairedCard, which already handles the unpaired/unreachable case) is
-  // the complete list of xLights controllers.
-  const cards = [
-    ...report.controllerValidations.map(buildPairedCard),
-    ...report.unpairedWledDevices.map(buildUnpairedWledCard),
-  ];
-
-  if (cards.length === 0) {
+  if (rows.length === 0) {
     cardGrid.innerHTML = '<p class="empty-hint">No controllers found in the uploaded xLights config.</p>';
   } else {
-    cards.forEach(c => cardGrid.appendChild(c));
+    rows.forEach(row => {
+      cardGrid.appendChild(row.kind === 'paired' ? buildPairedCard(row.raw) : buildUnpairedWledCard(row.raw));
+    });
   }
   updateBulkButtons();
 }
@@ -315,18 +351,12 @@ function buildUnpairedWledCard(dev) {
 
 // ── List rendering ───────────────────────────────────────────────────────
 
-function renderList() {
+function renderList(rows) {
   listGrid.innerHTML = '';
-  if (!report) return;
 
-  // Same source data as renderCards() — see the note above about
-  // unpairedXlightsControllers being a subset of controllerValidations.
-  const rows = [
-    ...report.controllerValidations.map(buildListRow),
-    ...report.unpairedWledDevices.map(buildUnpairedWledRow),
-  ];
+  const listRows = rows.map(row => row.kind === 'paired' ? buildListRow(row.raw) : buildUnpairedWledRow(row.raw));
 
-  if (rows.length === 0) {
+  if (listRows.length === 0) {
     listGrid.innerHTML = '<p class="empty-hint">No controllers found in the uploaded xLights config.</p>';
   } else {
     const header = document.createElement('div');
@@ -340,7 +370,7 @@ function renderList() {
       <span>Actions</span>
     `;
     listGrid.appendChild(header);
-    rows.forEach(row => listGrid.appendChild(row));
+    listRows.forEach(row => listGrid.appendChild(row));
   }
   updateBulkButtons();
 }
