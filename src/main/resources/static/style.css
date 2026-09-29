@@ -357,16 +357,6 @@ button.view-toggle.active {
   50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--err) 0%, transparent); }
 }
 
-.card-actions {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-  margin-top: auto;
-  padding-top: 0.25rem;
-}
-
-.card-actions button { font-size: 0.7rem; padding: 0.35rem 0.65rem; }
-
 .card-select {
   display: flex;
   align-items: center;
@@ -394,13 +384,14 @@ input[type="checkbox"] {
 .list-header,
 .list-row {
   display: grid;
-  /* The last column is a fixed width, not auto/fr: .list-header and each
-     .list-row are separate grid containers, and an `auto` track is sized
-     from that container's own content — the header's "Actions" text is
-     narrow while a row's three buttons are wide, so an auto/fr track would
-     make the header and rows compute different column widths and
-     misalign. A fixed width keeps every row (and the header) identical. */
-  grid-template-columns: 2rem minmax(120px, 1.3fr) minmax(110px, 1fr) minmax(90px, 0.7fr) minmax(120px, 1fr) minmax(120px, 1fr) 340px;
+  /* .list-header and each .list-row are separate grid containers, so their
+     column widths are computed independently — this only stays aligned
+     because every column here is a header label or badge/text cell of
+     comparable intrinsic width. If a column with per-row variable-width
+     content (like the old fixed-340px Actions column once did, back when
+     per-row action buttons existed) is reintroduced, give IT a fixed width
+     too, or header/row columns will drift out of alignment again. */
+  grid-template-columns: 2rem minmax(120px, 1.3fr) minmax(110px, 1fr) minmax(90px, 0.7fr) minmax(120px, 1fr) minmax(120px, 1fr);
   gap: 0.75rem;
   align-items: center;
   padding: 0.6rem 0.9rem;
@@ -471,14 +462,5 @@ button.list-sort-btn:hover:not(:disabled) { color: var(--text-dim); background: 
 }
 
 .list-ip { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-dim); }
-
-.list-actions {
-  display: flex;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.list-actions button { font-size: 0.68rem; padding: 0.3rem 0.55rem; }
 
 .list-view .empty-hint { border: none; padding: 1.5rem 0.9rem; margin: 0; }

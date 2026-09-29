@@ -324,9 +324,7 @@ function renderCards(rows) {
   if (rows.length === 0) {
     cardGrid.innerHTML = `<p class="empty-hint">${escapeHtml(noRowsMessage())}</p>`;
   } else {
-    rows.forEach(row => {
-      cardGrid.appendChild(row.kind === 'paired' ? buildPairedCard(row.raw) : buildUnpairedWledCard(row.raw));
-    });
+    rows.forEach(row => cardGrid.appendChild(buildCard(row)));
   }
   updateBulkButtons();
 }
@@ -355,14 +353,9 @@ function backupBadge(controllerName) {
     : { cls: 'warn', text: 'Never backed up' };
 }
 
-function buildPairedCard(cv) {
-  const name = cv.xLightsController.name;
-  const reachable = !!cv.wledDevice;
-  const ip = (cv.wledDevice && cv.wledDevice.ipAddress) || cv.xLightsController.ipAddress || '';
-  const reach = reachBadge(reachable);
-  const sync = reachable ? syncBadge(cv) : null;
-  const backup = backupBadge(name);
-  const lastBackup = latestBackupFor(name);
+function buildCard(row) {
+  const { name, ip, reachable, reachableText, reachableCls, syncText, syncCls, backupText, backupCls, kind } = row;
+  const ipDisplay = kind === 'unpaired' ? `${ip} · not in xLights config` : (ip || 'no address');
 
   const card = document.createElement('div');
   card.className = 'card';
@@ -370,21 +363,16 @@ function buildPairedCard(cv) {
     <div class="card-header">
       <div>
         <span class="card-title">${escapeHtml(name)}</span>
-        <span class="card-ip">${escapeHtml(ip || 'no address')}</span>
+        <span class="card-ip">${escapeHtml(ipDisplay)}</span>
       </div>
       <label class="card-select">
         <input type="checkbox" class="select-box" ${reachable ? '' : 'disabled'} />
       </label>
     </div>
     <div class="badges">
-      <span class="badge ${reach.cls}">${escapeHtml(reach.text)}</span>
-      ${sync ? `<span class="badge ${sync.cls}">${escapeHtml(sync.text)}</span>` : ''}
-      <span class="badge ${backup.cls}">${escapeHtml(backup.text)}</span>
-    </div>
-    <div class="card-actions">
-      <button class="backup-now" ${reachable ? '' : 'disabled'}>Backup Now</button>
-      <button class="restore-latest" ${lastBackup && reachable ? '' : 'disabled'}>Restore Latest</button>
-      <button class="update-xlights" ${reachable && sync.cls !== 'ok' ? '' : 'disabled'}>Update segments</button>
+      ${reachableText ? `<span class="badge ${reachableCls}">${escapeHtml(reachableText)}</span>` : ''}
+      ${syncText ? `<span class="badge ${syncCls}">${escapeHtml(syncText)}</span>` : ''}
+      <span class="badge ${backupCls}">${escapeHtml(backupText)}</span>
     </div>
   `;
 
@@ -394,32 +382,7 @@ function buildPairedCard(cv) {
     if (e.target.checked) selected.add(name); else selected.delete(name);
     updateBulkButtons();
   });
-  card.querySelector('.backup-now').addEventListener('click', () => backupNow(name, ip));
-  card.querySelector('.restore-latest').addEventListener('click', () => restoreOne(name, ip, lastBackup));
-  card.querySelector('.update-xlights').addEventListener('click', () => updateToXlights([name]));
 
-  return card;
-}
-
-function buildUnpairedWledCard(dev) {
-  const backup = backupBadge(dev.name);
-  const card = document.createElement('div');
-  card.className = 'card';
-  card.innerHTML = `
-    <div class="card-header">
-      <div>
-        <span class="card-title">${escapeHtml(dev.name)}</span>
-        <span class="card-ip">${escapeHtml(dev.ipAddress)} · not in xLights config</span>
-      </div>
-    </div>
-    <div class="badges">
-      <span class="badge ${backup.cls}">${escapeHtml(backup.text)}</span>
-    </div>
-    <div class="card-actions">
-      <button class="backup-now">Backup Now</button>
-    </div>
-  `;
-  card.querySelector('.backup-now').addEventListener('click', () => backupNow(dev.name, dev.ipAddress));
   return card;
 }
 
@@ -485,8 +448,7 @@ function renderList(rows) {
 }
 
 function buildListRow(row) {
-  const { name, ip, reachable, reachableText, reachableCls, syncText, syncCls, backupText, backupCls, kind } = row;
-  const lastBackup = latestBackupFor(name);
+  const { name, reachable, reachableText, reachableCls, syncText, syncCls, backupText, backupCls, kind, ip } = row;
   const ipDisplay = kind === 'unpaired' ? `${ip} · not in xLights config` : (ip || 'no address');
 
   const el = document.createElement('div');
@@ -500,13 +462,6 @@ function buildListRow(row) {
     ${reachableText ? `<span class="badge ${reachableCls}">${escapeHtml(reachableText)}</span>` : '<span></span>'}
     ${syncText ? `<span class="badge ${syncCls}">${escapeHtml(syncText)}</span>` : '<span></span>'}
     <span class="badge ${backupCls}">${escapeHtml(backupText)}</span>
-    <div class="list-actions">
-      <button class="backup-now" ${reachable ? '' : 'disabled'}>Backup Now</button>
-      <button class="restore-latest" ${lastBackup && reachable ? '' : 'disabled'}>Restore Latest</button>
-      ${kind === 'paired'
-        ? `<button class="update-xlights" ${reachable && syncCls !== 'ok' ? '' : 'disabled'}>Update segments</button>`
-        : ''}
-    </div>
   `;
 
   const checkbox = el.querySelector('.select-box');
@@ -515,9 +470,6 @@ function buildListRow(row) {
     if (e.target.checked) selected.add(name); else selected.delete(name);
     updateBulkButtons();
   });
-  el.querySelector('.backup-now').addEventListener('click', () => backupNow(name, ip));
-  el.querySelector('.restore-latest').addEventListener('click', () => restoreOne(name, ip, lastBackup));
-  el.querySelector('.update-xlights')?.addEventListener('click', () => updateToXlights([name]));
 
   return el;
 }
@@ -545,33 +497,7 @@ function updateBulkButtons() {
   updateSelectedBtn.disabled = !has;
 }
 
-// ── Per-card actions ─────────────────────────────────────────────────────
-
-async function backupNow(name, ip) {
-  setSummary(`Backing up ${name}…`);
-  try {
-    const res = await fetch(`/api/backups/${encodeURIComponent(name)}?ip=${encodeURIComponent(ip)}`, { method: 'POST' });
-    if (!res.ok) throw new Error(String(res.status));
-    setSummary(`${name}: backed up`);
-    await refreshStatus();
-  } catch (err) {
-    setSummary(`${name}: backup failed — ${err.message}`, true);
-  }
-}
-
-async function restoreOne(name, ip, backupRecord) {
-  if (!backupRecord) return;
-  const when = timeAgo(backupRecord.timestamp);
-  if (!confirm(`Restore ${name} from the backup taken ${when}? This overwrites the device's current config and reboots it.`)) return;
-  setSummary(`Restoring ${name}…`);
-  try {
-    await doRestore(name, ip, backupRecord);
-    setSummary(`${name}: restored`);
-    await refreshStatus();
-  } catch (err) {
-    setSummary(`${name}: restore failed — ${err.message}`, true);
-  }
-}
+// ── Actions (bulk-only — no per-item buttons remain in either view) ───────
 
 async function doRestore(name, ip, backupRecord) {
   const ts = new Date(backupRecord.timestamp).getTime();
