@@ -30,6 +30,16 @@ A few things that make review faster:
 - **Match the existing style.** No linter/formatter is enforced here — just take a look at the surrounding code and follow its conventions.
 - **Explain non-obvious decisions in the PR description**, not just in code comments — it helps me understand your reasoning during review even before I open the diff.
 
+## Branch protection
+
+`main` has the following protections enabled (via GitHub branch protection rules), enforced for everyone including the maintainer:
+
+- **A passing `Test` status check is required**, and it's re-checked against the latest `main` before merge (`strict` mode) — a PR that's gone stale behind other merges has to re-run, not just have passed once.
+- **A pull request is required for every change** — no direct pushes to `main`, no exceptions for admins (`enforce_admins`). This is deliberate, not an oversight: it means even a one-line maintainer fix goes through CI and a reviewable diff.
+- **Required approving review count is 0.** This looks like "no review needed," but it's actually a workaround: GitHub never allows self-approval, and this repo currently has one collaborator, so requiring ≥1 approval would make solo maintenance impossible. The PR + CI gate is still enforced; only the human-approval step is skipped out of necessity. If a second regular contributor joins, this should go up to 1.
+- **Conversation resolution is required** before merging — any review comment thread has to be marked resolved.
+- **Force-pushes and branch deletion are disabled** on `main`.
+
 ## Local setup
 
 See the [README](README.md#running-locally) for how to build and run the app locally, and how the pieces fit together before you dive into a change.
