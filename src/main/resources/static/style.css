@@ -152,6 +152,11 @@ h1 .glyph { color: var(--accent); font-weight: 400; }
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--err) 40%, transparent);
 }
 
+.checkbox-field { gap: 0.35rem; cursor: pointer; }
+
+.selection-summary:empty { display: none; }
+.selection-summary.has-hidden { color: var(--warn); }
+
 button {
   font-family: var(--font-display);
   font-weight: 600;

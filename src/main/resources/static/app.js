@@ -23,6 +23,8 @@ const filterInputs = {
   sync: document.getElementById('filterSync'),
   backup: document.getElementById('filterBackup'),
 };
+const showSelectedOnlyToggle = document.getElementById('showSelectedOnlyToggle');
+const selectionSummaryEl = document.getElementById('selectionSummary');
 
 let report = null;          // last ValidationReport
 let backups = [];           // last WledBackupRecord[]
@@ -46,6 +48,12 @@ const FILTER_FIELD_KEY = { name: 'name', ip: 'ip', reachable: 'reachableText', s
 let visibleRows = [];
 let totalRowCount = 0; // unfiltered row count, so "0 matches" can distinguish a narrow filter from truly no data
 
+// Applied as a separate, later display-time restriction — never folded into
+// visibleRows itself. visibleRows is also what selectAll() scopes against and
+// what the "hidden by filter" count is measured against; if this were folded
+// in, turning it on would make Select All a no-op and would corrupt that count.
+let showSelectedOnly = false;
+
 const VIEW_STORAGE_KEY = 'xlights-wled-view';
 let currentView = localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'card';
 
@@ -67,6 +75,11 @@ function init() {
       filters[field] = input.value;
       renderCurrentView();
     });
+  });
+
+  showSelectedOnlyToggle.addEventListener('change', e => {
+    showSelectedOnly = e.target.checked;
+    renderCurrentView();
   });
 
   setView(currentView);
@@ -226,17 +239,15 @@ function renderCurrentView() {
   const { rows, invalidFields } = applyFieldFilters(allRows, filters);
   visibleRows = rows;
   updateFilterInputValidity(invalidFields);
-  if (currentView === 'list') renderList(rows); else renderCards(rows);
+
+  const rowsForDisplay = showSelectedOnly ? rows.filter(r => selected.has(r.name)) : rows;
+  if (currentView === 'list') renderList(rowsForDisplay); else renderCards(rowsForDisplay);
 }
 
 function noRowsMessage() {
   return totalRowCount > 0
     ? 'No controllers match the current filters.'
     : 'No controllers found in the uploaded xLights config.';
-}
-
-function activeContainer() {
-  return currentView === 'list' ? listGrid : cardGrid;
 }
 
 // ── Filtering ────────────────────────────────────────────────────────────
@@ -476,18 +487,24 @@ function buildListRow(row) {
 
 // ── Selection ────────────────────────────────────────────────────────────
 
+// Scoped to visibleRows (the current field-filtered set), never the full
+// dataset — checking "Select All" under a filter must only ever select what
+// you can actually see. This also merges into the existing selection rather
+// than replacing it, so a selection built up across several filter passes
+// survives. (Standard guidance for this pattern; see the plan doc for the
+// real-world "unscoped select-all deleted 1900 records instead of the 96
+// visible" cautionary tale that motivated it — this app's "Restore Selected"
+// is exactly the kind of destructive action that makes it worth getting right.)
 function selectAll() {
-  activeContainer().querySelectorAll('.select-box:not(:disabled)').forEach(cb => { cb.checked = true; });
-  report.controllerValidations
-    .filter(cv => cv.wledDevice)
-    .forEach(cv => selected.add(cv.xLightsController.name));
-  updateBulkButtons();
+  visibleRows.filter(r => r.selectable).forEach(r => selected.add(r.name));
+  renderCurrentView();
 }
 
+// Unlike selectAll(), this is a full unscoped reset — simple, predictable,
+// always clears everything regardless of what's currently filtered/visible.
 function selectNone() {
-  activeContainer().querySelectorAll('.select-box').forEach(cb => { cb.checked = false; });
   selected.clear();
-  updateBulkButtons();
+  renderCurrentView();
 }
 
 function updateBulkButtons() {
@@ -495,6 +512,21 @@ function updateBulkButtons() {
   backupSelectedBtn.disabled = !has;
   restoreSelectedBtn.disabled = !has;
   updateSelectedBtn.disabled = !has;
+  updateSelectionSummary();
+}
+
+function updateSelectionSummary() {
+  if (selected.size === 0) {
+    selectionSummaryEl.textContent = '';
+    selectionSummaryEl.classList.remove('has-hidden');
+    return;
+  }
+  const visibleNames = new Set(visibleRows.map(r => r.name));
+  const hidden = [...selected].filter(n => !visibleNames.has(n)).length;
+  selectionSummaryEl.textContent = hidden > 0
+    ? `${selected.size} selected (${hidden} hidden by filter)`
+    : `${selected.size} selected`;
+  selectionSummaryEl.classList.toggle('has-hidden', hidden > 0);
 }
 
 // ── Actions (bulk-only — no per-item buttons remain in either view) ───────
