@@ -118,6 +118,40 @@ h1 .glyph { color: var(--accent); font-weight: 400; }
   margin: 0 0.2rem;
 }
 
+.filter-bar { margin-bottom: 0.2rem; }
+
+.filter-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.filter-input {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  width: 130px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.filter-input:focus-visible { border-color: var(--accent); }
+
+.filter-input.invalid {
+  border-color: var(--err);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--err) 40%, transparent);
+}
+
 button {
   font-family: var(--font-display);
   font-weight: 600;

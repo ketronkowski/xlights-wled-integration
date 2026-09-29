@@ -16,11 +16,34 @@ const cardGrid = document.getElementById('cardGrid');
 const listGrid = document.getElementById('listGrid');
 const cardViewBtn = document.getElementById('cardViewBtn');
 const listViewBtn = document.getElementById('listViewBtn');
+const filterInputs = {
+  name: document.getElementById('filterName'),
+  ip: document.getElementById('filterIp'),
+  reachable: document.getElementById('filterReachable'),
+  sync: document.getElementById('filterSync'),
+  backup: document.getElementById('filterBackup'),
+};
 
 let report = null;          // last ValidationReport
 let backups = [];           // last WledBackupRecord[]
 let pendingUpload = null;   // { networksFile, effectsFile, folderLabel }
 const selected = new Set(); // controller names selected via card/list checkboxes
+
+// Raw regex strings, one per field; empty = no filter for that field. All
+// non-empty filters AND together. Matched case-insensitively against the
+// exact text each field's badge/cell renders (see FILTER_FIELD_KEY below) —
+// not a separate notion of the underlying value — so what you type is always
+// consistent with what's on screen. Note "Reachable" text is literally
+// "Reachable"/"Unreachable", so e.g. typing "reach" matches both; that's
+// expected substring-regex behavior, not a bug.
+const filters = { name: '', ip: '', reachable: '', sync: '', backup: '' };
+const FILTER_FIELD_KEY = { name: 'name', ip: 'ip', reachable: 'reachableText', sync: 'syncText', backup: 'backupText' };
+
+// The last field-filtered row set — recomputed on every render. Used by
+// selectAll()/the selection summary so "select all" and "how many of my
+// selection are currently hidden" both stay scoped to what's actually
+// visible under the active filters.
+let visibleRows = [];
 
 const VIEW_STORAGE_KEY = 'xlights-wled-view';
 let currentView = localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'card';
@@ -37,6 +60,13 @@ function init() {
   backupSelectedBtn.addEventListener('click', backupSelected);
   restoreSelectedBtn.addEventListener('click', restoreSelected);
   updateSelectedBtn.addEventListener('click', () => updateToXlights([...selected]));
+
+  Object.entries(filterInputs).forEach(([field, input]) => {
+    input.addEventListener('input', () => {
+      filters[field] = input.value;
+      renderCurrentView();
+    });
+  });
 
   setView(currentView);
 
@@ -190,12 +220,46 @@ function setView(view) {
 }
 
 function renderCurrentView() {
-  const rows = buildRowModel();
+  const allRows = buildRowModel();
+  const { rows, invalidFields } = applyFieldFilters(allRows, filters);
+  visibleRows = rows;
+  updateFilterInputValidity(invalidFields);
   if (currentView === 'list') renderList(rows); else renderCards(rows);
 }
 
 function activeContainer() {
   return currentView === 'list' ? listGrid : cardGrid;
+}
+
+// ── Filtering ────────────────────────────────────────────────────────────
+
+function applyFieldFilters(rows, filterValues) {
+  const compiled = {};
+  const invalidFields = new Set();
+  for (const [field, pattern] of Object.entries(filterValues)) {
+    if (!pattern) continue;
+    try {
+      compiled[field] = new RegExp(pattern, 'i');
+    } catch {
+      // Invalid regex (e.g. an unbalanced paren) — that field matches
+      // nothing rather than throwing and breaking the whole render.
+      invalidFields.add(field);
+    }
+  }
+  const activeFields = Object.keys(compiled).concat([...invalidFields]);
+  const rowsMatching = rows.filter(row =>
+    activeFields.every(field => {
+      const regex = compiled[field];
+      return regex ? regex.test(String(row[FILTER_FIELD_KEY[field]])) : false;
+    })
+  );
+  return { rows: rowsMatching, invalidFields };
+}
+
+function updateFilterInputValidity(invalidFields) {
+  Object.entries(filterInputs).forEach(([field, input]) => {
+    input.classList.toggle('invalid', invalidFields.has(field));
+  });
 }
 
 // ── Unified row model ────────────────────────────────────────────────────
