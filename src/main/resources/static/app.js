@@ -44,6 +44,7 @@ const FILTER_FIELD_KEY = { name: 'name', ip: 'ip', reachable: 'reachableText', s
 // selection are currently hidden" both stay scoped to what's actually
 // visible under the active filters.
 let visibleRows = [];
+let totalRowCount = 0; // unfiltered row count, so "0 matches" can distinguish a narrow filter from truly no data
 
 const VIEW_STORAGE_KEY = 'xlights-wled-view';
 let currentView = localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'card';
@@ -221,10 +222,17 @@ function setView(view) {
 
 function renderCurrentView() {
   const allRows = buildRowModel();
+  totalRowCount = allRows.length;
   const { rows, invalidFields } = applyFieldFilters(allRows, filters);
   visibleRows = rows;
   updateFilterInputValidity(invalidFields);
   if (currentView === 'list') renderList(rows); else renderCards(rows);
+}
+
+function noRowsMessage() {
+  return totalRowCount > 0
+    ? 'No controllers match the current filters.'
+    : 'No controllers found in the uploaded xLights config.';
 }
 
 function activeContainer() {
@@ -287,7 +295,7 @@ function buildRowModel() {
     const sync = reachable ? syncBadge(cv) : null;
     const backup = backupBadge(name);
     return {
-      kind: 'paired', raw: cv, name, ip, selectable: true,
+      kind: 'paired', raw: cv, name, ip, reachable, selectable: reachable,
       reachableText: reach.text, reachableCls: reach.cls,
       syncText: sync ? sync.text : '', syncCls: sync ? sync.cls : '',
       backupText: backup.text, backupCls: backup.cls,
@@ -297,7 +305,9 @@ function buildRowModel() {
   const unpaired = report.unpairedWledDevices.map(dev => {
     const backup = backupBadge(dev.name);
     return {
-      kind: 'unpaired', raw: dev, name: dev.name, ip: dev.ipAddress, selectable: true,
+      // Always reachable by construction — it only appears here because the
+      // backend successfully fetched live data from it.
+      kind: 'unpaired', raw: dev, name: dev.name, ip: dev.ipAddress, reachable: true, selectable: true,
       reachableText: '', reachableCls: '', syncText: '', syncCls: '',
       backupText: backup.text, backupCls: backup.cls,
     };
@@ -312,7 +322,7 @@ function renderCards(rows) {
   cardGrid.innerHTML = '';
 
   if (rows.length === 0) {
-    cardGrid.innerHTML = '<p class="empty-hint">No controllers found in the uploaded xLights config.</p>';
+    cardGrid.innerHTML = `<p class="empty-hint">${escapeHtml(noRowsMessage())}</p>`;
   } else {
     rows.forEach(row => {
       cardGrid.appendChild(row.kind === 'paired' ? buildPairedCard(row.raw) : buildUnpairedWledCard(row.raw));
@@ -415,91 +425,101 @@ function buildUnpairedWledCard(dev) {
 
 // ── List rendering ───────────────────────────────────────────────────────
 
+const SORT_FIELD_KEY = { name: 'name', ip: 'ip', reachable: 'reachableText', sync: 'syncText', backup: 'backupText' };
+const LIST_COLUMNS = [
+  { key: null, label: '' },
+  { key: 'name', label: 'Name' },
+  { key: 'ip', label: 'IP' },
+  { key: 'reachable', label: 'Reachable' },
+  { key: 'sync', label: 'Sync' },
+  { key: 'backup', label: 'Backup' },
+];
+
+let sortColumn = null; // one of LIST_COLUMNS' keys, or null for unsorted (upload order)
+let sortDir = 'asc';    // 'asc' | 'desc'
+
+function applySort(rows) {
+  if (!sortColumn) return rows;
+  const field = SORT_FIELD_KEY[sortColumn];
+  const dir = sortDir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) =>
+    dir * String(a[field]).localeCompare(String(b[field]), undefined, { sensitivity: 'base', numeric: true }));
+}
+
+function buildListHeader() {
+  const header = document.createElement('div');
+  header.className = 'list-header';
+  LIST_COLUMNS.forEach(col => {
+    if (!col.key) { header.appendChild(document.createElement('span')); return; }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'list-sort-btn' + (sortColumn === col.key ? ' active' : '');
+    const arrow = sortColumn === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '';
+    btn.innerHTML = `${escapeHtml(col.label)}<span class="sort-indicator">${arrow}</span>`;
+    btn.addEventListener('click', () => {
+      if (sortColumn === col.key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      else { sortColumn = col.key; sortDir = 'asc'; }
+      renderCurrentView();
+    });
+    header.appendChild(btn);
+  });
+  return header;
+}
+
 function renderList(rows) {
   listGrid.innerHTML = '';
 
-  const listRows = rows.map(row => row.kind === 'paired' ? buildListRow(row.raw) : buildUnpairedWledRow(row.raw));
+  const sortedRows = applySort(rows);
+  const listRows = sortedRows.map(buildListRow);
 
+  listGrid.appendChild(buildListHeader());
   if (listRows.length === 0) {
-    listGrid.innerHTML = '<p class="empty-hint">No controllers found in the uploaded xLights config.</p>';
+    const hint = document.createElement('p');
+    hint.className = 'empty-hint';
+    hint.textContent = noRowsMessage();
+    listGrid.appendChild(hint);
   } else {
-    const header = document.createElement('div');
-    header.className = 'list-header';
-    header.innerHTML = `
-      <span></span>
-      <span>Name / IP</span>
-      <span>Reachable</span>
-      <span>Sync</span>
-      <span>Backup</span>
-      <span>Actions</span>
-    `;
-    listGrid.appendChild(header);
     listRows.forEach(row => listGrid.appendChild(row));
   }
   updateBulkButtons();
 }
 
-function buildListRow(cv) {
-  const name = cv.xLightsController.name;
-  const reachable = !!cv.wledDevice;
-  const ip = (cv.wledDevice && cv.wledDevice.ipAddress) || cv.xLightsController.ipAddress || '';
-  const reach = reachBadge(reachable);
-  const sync = reachable ? syncBadge(cv) : null;
-  const backup = backupBadge(name);
+function buildListRow(row) {
+  const { name, ip, reachable, reachableText, reachableCls, syncText, syncCls, backupText, backupCls, kind } = row;
   const lastBackup = latestBackupFor(name);
+  const ipDisplay = kind === 'unpaired' ? `${ip} · not in xLights config` : (ip || 'no address');
 
-  const row = document.createElement('div');
-  row.className = 'list-row';
-  row.innerHTML = `
+  const el = document.createElement('div');
+  el.className = 'list-row';
+  el.innerHTML = `
     <label class="list-select">
       <input type="checkbox" class="select-box" ${reachable ? '' : 'disabled'} />
     </label>
-    <div class="list-name-ip">
-      <span class="list-name">${escapeHtml(name)}</span>
-      <span class="list-ip">${escapeHtml(ip || 'no address')}</span>
-    </div>
-    <span class="badge ${reach.cls}">${escapeHtml(reach.text)}</span>
-    ${sync ? `<span class="badge ${sync.cls}">${escapeHtml(sync.text)}</span>` : '<span></span>'}
-    <span class="badge ${backup.cls}">${escapeHtml(backup.text)}</span>
+    <span class="list-name">${escapeHtml(name)}</span>
+    <span class="list-ip">${escapeHtml(ipDisplay)}</span>
+    ${reachableText ? `<span class="badge ${reachableCls}">${escapeHtml(reachableText)}</span>` : '<span></span>'}
+    ${syncText ? `<span class="badge ${syncCls}">${escapeHtml(syncText)}</span>` : '<span></span>'}
+    <span class="badge ${backupCls}">${escapeHtml(backupText)}</span>
     <div class="list-actions">
       <button class="backup-now" ${reachable ? '' : 'disabled'}>Backup Now</button>
       <button class="restore-latest" ${lastBackup && reachable ? '' : 'disabled'}>Restore Latest</button>
-      <button class="update-xlights" ${reachable && sync.cls !== 'ok' ? '' : 'disabled'}>Update segments</button>
+      ${kind === 'paired'
+        ? `<button class="update-xlights" ${reachable && syncCls !== 'ok' ? '' : 'disabled'}>Update segments</button>`
+        : ''}
     </div>
   `;
 
-  const checkbox = row.querySelector('.select-box');
+  const checkbox = el.querySelector('.select-box');
   checkbox.checked = selected.has(name);
   checkbox.addEventListener('change', e => {
     if (e.target.checked) selected.add(name); else selected.delete(name);
     updateBulkButtons();
   });
-  row.querySelector('.backup-now').addEventListener('click', () => backupNow(name, ip));
-  row.querySelector('.restore-latest').addEventListener('click', () => restoreOne(name, ip, lastBackup));
-  row.querySelector('.update-xlights').addEventListener('click', () => updateToXlights([name]));
+  el.querySelector('.backup-now').addEventListener('click', () => backupNow(name, ip));
+  el.querySelector('.restore-latest').addEventListener('click', () => restoreOne(name, ip, lastBackup));
+  el.querySelector('.update-xlights')?.addEventListener('click', () => updateToXlights([name]));
 
-  return row;
-}
-
-function buildUnpairedWledRow(dev) {
-  const backup = backupBadge(dev.name);
-  const row = document.createElement('div');
-  row.className = 'list-row';
-  row.innerHTML = `
-    <span></span>
-    <div class="list-name-ip">
-      <span class="list-name">${escapeHtml(dev.name)}</span>
-      <span class="list-ip">${escapeHtml(dev.ipAddress)} · not in xLights config</span>
-    </div>
-    <span></span>
-    <span></span>
-    <span class="badge ${backup.cls}">${escapeHtml(backup.text)}</span>
-    <div class="list-actions">
-      <button class="backup-now">Backup Now</button>
-    </div>
-  `;
-  row.querySelector('.backup-now').addEventListener('click', () => backupNow(dev.name, dev.ipAddress));
-  return row;
+  return el;
 }
 
 // ── Selection ────────────────────────────────────────────────────────────
