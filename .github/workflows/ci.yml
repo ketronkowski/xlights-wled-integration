@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, closed]
 
 env:
   REGISTRY: ghcr.io
@@ -14,6 +15,7 @@ jobs:
   # ── Test ──────────────────────────────────────────────────────────────────
   test:
     name: Test
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -104,4 +106,158 @@ jobs:
           git add apps/xlights-wled-integration/env/main/values.yaml
           git diff --cached --quiet && echo "No image tag changes" && exit 0
           git commit -m "chore(xlights-wled-integration): deploy ${{ github.sha }}"
+          git push
+
+  # ── Preview: Build & Push ────────────────────────────────────────────────
+  preview-build-push:
+    name: Build & Push Preview Image
+    needs: test
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    concurrency:
+      group: pr-preview-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up QEMU (arm64 cross-build)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push preview image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Preview: Deploy ──────────────────────────────────────────────────────
+  preview-deploy:
+    name: Deploy Preview Environment
+    needs: preview-build-push
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    concurrency:
+      group: pr-preview-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Checkout deploy-repo
+        uses: actions/checkout@v4
+        with:
+          repository: ketronkowski/deploy-repo
+          token: ${{ secrets.DEPLOY_REPO_PAT }}
+          path: deploy-repo
+
+      - name: Stamp preview environment from template
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          cd deploy-repo/apps/xlights-wled-integration
+          rm -rf "env/pr-$PR"
+          cp -r env/_pr-template "env/pr-$PR"
+          sed -i \
+            -e "s/__NAMESPACE__/xlights-wled-pr-$PR/g" \
+            -e "s/__PR_NUMBER__/$PR/g" \
+            -e "s/__IMAGE_TAG__/pr-$PR/g" \
+            "env/pr-$PR/values.yaml"
+
+          cat > "argocd/app_pr_$PR.yaml" <<EOF
+          apiVersion: argoproj.io/v1alpha1
+          kind: Application
+          metadata:
+            name: xlights-wled-integration-pr-$PR
+            namespace: argocd
+            finalizers:
+              - resources-finalizer.argocd.argoproj.io
+          spec:
+            project: default
+            source:
+              repoURL: https://github.com/ketronkowski/deploy-repo
+              targetRevision: HEAD
+              path: apps/xlights-wled-integration/env/pr-$PR
+            destination:
+              server: https://kubernetes.default.svc
+              namespace: xlights-wled-pr-$PR
+            syncPolicy:
+              syncOptions:
+                - ServerSideApply=true
+              automated:
+                prune: true
+                selfHeal: true
+          EOF
+
+      - name: Commit and push
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          cd deploy-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "apps/xlights-wled-integration/env/pr-$PR" "apps/xlights-wled-integration/argocd/app_pr_$PR.yaml"
+          git diff --cached --quiet && echo "No preview changes" && exit 0
+          git commit -m "chore(xlights-wled-integration): deploy PR #$PR preview (${{ github.event.pull_request.head.sha }})"
+          git push
+
+      - name: Comment preview URL on PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          URL="https://xlights-wled.lab.ri.tronkowski.net/pr-$PR/"
+          BODY="🔎 **Preview environment:** $URL
+
+          Updates automatically on every push to this PR. Torn down automatically when the PR is closed."
+          gh pr comment "$PR" --repo "${{ github.repository }}" --edit-last --body "$BODY" 2>/dev/null || \
+            gh pr comment "$PR" --repo "${{ github.repository }}" --body "$BODY"
+
+  # ── Preview: Cleanup ─────────────────────────────────────────────────────
+  preview-cleanup:
+    name: Tear Down Preview Environment
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    concurrency:
+      group: pr-preview-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout deploy-repo
+        uses: actions/checkout@v4
+        with:
+          repository: ketronkowski/deploy-repo
+          token: ${{ secrets.DEPLOY_REPO_PAT }}
+          path: deploy-repo
+
+      - name: Remove preview environment files
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          cd deploy-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git rm -r --ignore-unmatch "apps/xlights-wled-integration/env/pr-$PR" "apps/xlights-wled-integration/argocd/app_pr_$PR.yaml"
+          git diff --cached --quiet && echo "Nothing to clean up" && exit 0
+          git commit -m "chore(xlights-wled-integration): remove PR #$PR preview environment"
           git push
