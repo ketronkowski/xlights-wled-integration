@@ -131,11 +131,16 @@ async function loadUploadStatus() {
     const res = await fetch('/api/upload/status');
     if (res.status === 404) {
       uploadStatusEl.textContent = 'No upload yet.';
+      folderLabelEl.textContent = '';
       return false;
     }
     if (!res.ok) throw new Error(String(res.status));
     const status = await res.json();
     uploadStatusEl.textContent = `Last uploaded: ${status.folderLabel} · ${timeAgo(status.uploadedAt)}`;
+    // Restore the picker's folder label from the persisted upload so a page
+    // refresh doesn't make it look like the chosen show folder was forgotten
+    // — the underlying config is already on disk, this just reflects that.
+    folderLabelEl.textContent = `${status.folderLabel} (uploaded)`;
     return true;
   } catch (err) {
     uploadStatusEl.textContent = `Could not load upload status (${err.message})`;
