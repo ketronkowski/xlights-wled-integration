@@ -162,3 +162,5 @@ Note: the homelab deployment tracks the latest commit on `main` (`:<sha>`) via c
 ## Contributing
 
 Bug reports, feature ideas, and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how to file an issue or send a PR.
+
+<!-- routing verification test -->
