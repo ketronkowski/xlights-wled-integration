@@ -32,7 +32,7 @@ class WledApiClient(
         val segments = state.seg.map { s ->
             WledSegment(id = s.id, name = s.name, start = s.start, stop = s.stop, on = s.on)
         }
-        val busses = cfg.hw.com.map { WledBus(start = it.start, len = it.len) }
+        val busses = cfg.hw.led.ins.map { WledBus(start = it.start, len = it.len) }
 
         log.debug("Fetched WLED device '{}' @ {}  LEDs={}  bpp={}  segments={}",
             info.name, ip, info.leds.count, bytesPerPixel, segments.size)
@@ -108,7 +108,7 @@ class WledApiClient(
         if (lc == 3 || lc == 7) return 4
         if (lc == 2) return 1
         // lc == 1 or unrecognized → RGB; cross-check against cfg bus type
-        val busType = cfg.hw.com.firstOrNull()?.type ?: return 3
+        val busType = cfg.hw.led.ins.firstOrNull()?.type ?: return 3
         // WLED bus types >= 64 are RGBW variants; types < 64 are RGB
         return if (busType >= 64) 4 else 3
     }

@@ -129,7 +129,7 @@ class ValidationService(
     // Resets a device's segments to WLED's own hardware default: one segment per
     // physical bus, sized exactly to that bus's configured pixel range. Falls back
     // to a single segment spanning the full LED count if the device's bus list is
-    // empty/unavailable (e.g. very old firmware, or /json/cfg didn't return hw.com).
+    // empty/unavailable (e.g. very old firmware, or /json/cfg didn't return hw.led.ins).
     // No backup is taken first — the caller is expected to be discarding all
     // backups anyway as part of the same operation, so backing up first would be
     // pointless.
