@@ -137,6 +137,23 @@ Every push to `main` runs: **test** → **build & push** a multi-arch image to `
 
 `main` is a protected branch — every change, including the maintainer's own, goes through a pull request with passing CI before it merges.
 
+## Releases
+
+Versioned releases are cut automatically by [release-please](https://github.com/googleapis/release-please) from [Conventional Commit](CONTRIBUTING.md#commit--pr-title-convention) PR titles — see the [Releases page](https://github.com/ketronkowski/xlights-wled-integration/releases) and [CHANGELOG.md](CHANGELOG.md) for what shipped in each version.
+
+Each release publishes:
+- A semver-tagged multi-arch image — `ghcr.io/ketronkowski/xlights-wled-integration:X.Y.Z` (and a floating `:X` major tag) — alongside the always-current `:latest`/`:<commit-sha>` tags described above.
+- A standalone `xlights-wled-integration.jar` attached to the GitHub Release, with a `.sha256` checksum.
+
+To run a specific released version without Docker:
+
+```bash
+curl -LO https://github.com/ketronkowski/xlights-wled-integration/releases/download/vX.Y.Z/xlights-wled-integration.jar
+java -jar xlights-wled-integration.jar
+```
+
+Note: the homelab deployment tracks the latest commit on `main` (`:<sha>`) via continuous GitOps deployment, not tagged releases — see [CI/CD](#cicd) above. Releases are for versioned artifacts/changelog, not what's actually running in the cluster.
+
 ## Contributing
 
 Bug reports, feature ideas, and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how to file an issue or send a PR.
