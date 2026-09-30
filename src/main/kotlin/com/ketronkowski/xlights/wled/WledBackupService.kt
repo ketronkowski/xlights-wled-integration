@@ -66,6 +66,15 @@ class WledBackupService(
             .sortedByDescending { it.timestamp }
     }
 
+    fun deleteAllBackups(): Boolean {
+        if (!backupsDir.exists()) return false
+        Files.walk(backupsDir).use { stream ->
+            stream.sorted(Comparator.reverseOrder<Path>()).forEach(Files::delete)
+        }
+        log.info("Deleted all WLED backups under {}", backupsDir)
+        return true
+    }
+
     fun restore(controllerName: String, timestamp: Long, ip: String) {
         val dir = backupsDir.resolve(controllerName).resolve(timestamp.toString())
         require(dir.exists()) { "No backup found for '$controllerName' at timestamp $timestamp" }

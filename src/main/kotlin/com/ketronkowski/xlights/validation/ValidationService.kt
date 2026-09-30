@@ -126,6 +126,42 @@ class ValidationService(
         }
     }
 
+    // Resets a device's segments to WLED's own hardware default: one segment per
+    // physical bus, sized exactly to that bus's configured pixel range. Falls back
+    // to a single segment spanning the full LED count if the device's bus list is
+    // empty/unavailable (e.g. very old firmware, or /json/cfg didn't return hw.com).
+    // No backup is taken first — the caller is expected to be discarding all
+    // backups anyway as part of the same operation, so backing up first would be
+    // pointless.
+    fun resetToBusDefaults(device: WledDevice) {
+        val targets = if (device.busses.isNotEmpty())
+            device.busses.map { it.start to (it.start + it.len) }
+        else
+            listOf(0 to device.totalLeds)
+
+        log.info("Resetting '{}' ({}) to {} bus-default segment(s)...", device.name, device.ipAddress, targets.size)
+
+        // Step 1: collapse to a single segment covering all LEDs
+        apiClient.patchState(device.ipAddress, WledStatePatch(listOf(
+            WledSegmentPatch(id = 0, start = 0, stop = device.totalLeds, on = true)
+        )))
+
+        // Step 2: delete any existing segments beyond index 0
+        val extraSegmentIds = device.segments.map { it.id }.filter { it > 0 }
+        if (extraSegmentIds.isNotEmpty()) {
+            apiClient.patchState(device.ipAddress, WledStatePatch(
+                extraSegmentIds.map { WledSegmentPatch(id = it, start = 0, stop = 0) }
+            ))
+        }
+
+        // Step 3: create one segment per bus (or the single fallback segment)
+        targets.take(device.maxSegments).forEachIndexed { index, (start, stop) ->
+            apiClient.patchState(device.ipAddress, WledStatePatch(listOf(
+                WledSegmentPatch(id = index, start = start, stop = stop, on = true)
+            )))
+        }
+    }
+
     // Returns true if the device was successfully backed up (safe to mutate).
     // On backup failure, logs and returns false so the caller skips this device
     // rather than patching it without a recovery point.

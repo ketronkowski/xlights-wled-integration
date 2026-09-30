@@ -1,6 +1,7 @@
 package com.ketronkowski.xlights.wled
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.ketronkowski.xlights.domain.WledBus
 import com.ketronkowski.xlights.domain.WledDevice
 import com.ketronkowski.xlights.domain.WledSegment
 import com.ketronkowski.xlights.wled.dto.WledCfgResponse
@@ -31,6 +32,7 @@ class WledApiClient(
         val segments = state.seg.map { s ->
             WledSegment(id = s.id, name = s.name, start = s.start, stop = s.stop, on = s.on)
         }
+        val busses = cfg.hw.com.map { WledBus(start = it.start, len = it.len) }
 
         log.debug("Fetched WLED device '{}' @ {}  LEDs={}  bpp={}  segments={}",
             info.name, ip, info.leds.count, bytesPerPixel, segments.size)
@@ -43,6 +45,7 @@ class WledApiClient(
             bytesPerPixel   = bytesPerPixel,
             maxSegments     = info.leds.maxseg,
             segments        = segments,
+            busses          = busses,
         )
     }
 

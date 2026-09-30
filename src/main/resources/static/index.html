@@ -37,6 +37,8 @@
       <button id="backupSelectedBtn" class="action" disabled>Backup Selected</button>
       <button id="restoreSelectedBtn" class="action danger" disabled>Restore Selected</button>
       <button id="updateSelectedBtn" class="action" disabled>Update Selected</button>
+      <span class="sep"></span>
+      <button id="clearAllBtn" class="action danger" type="button">Clear All Controllers</button>
     </div>
 
     <div class="bar-row filter-bar">
@@ -80,6 +82,22 @@
       <p class="empty-hint">Upload an xLights show folder to see your WLED devices here.</p>
     </div>
   </main>
+
+  <div id="clearAllModal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clearAllTitle">
+      <h2 id="clearAllTitle">Clear All Controllers</h2>
+      <p class="modal-warning">This is <strong>permanent and cannot be undone</strong>. No backup is taken before this runs.</p>
+      <ul id="clearAllOpsList" class="modal-ops-list"></ul>
+      <label class="modal-confirm-field">
+        Type <code>DELETE EVERYTHING</code> to confirm
+        <input type="text" id="clearAllConfirmInput" class="filter-input" autocomplete="off" />
+      </label>
+      <div class="modal-actions">
+        <button id="clearAllCancelBtn" type="button">Cancel</button>
+        <button id="clearAllConfirmBtn" class="action danger" type="button" disabled>Clear Everything</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
