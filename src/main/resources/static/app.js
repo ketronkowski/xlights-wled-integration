@@ -32,6 +32,20 @@ const clearAllConfirmInput = document.getElementById('clearAllConfirmInput');
 const clearAllConfirmBtn = document.getElementById('clearAllConfirmBtn');
 const clearAllCancelBtn = document.getElementById('clearAllCancelBtn');
 const CLEAR_ALL_PHRASE = 'DELETE EVERYTHING';
+const progressModal = document.getElementById('progressModal');
+const progressTitle = document.getElementById('progressTitle');
+const progressBarFill = document.getElementById('progressBarFill');
+const progressStatusLine = document.getElementById('progressStatusLine');
+const progressItemList = document.getElementById('progressItemList');
+const progressErrorPanel = document.getElementById('progressErrorPanel');
+const progressErrorName = document.getElementById('progressErrorName');
+const progressErrorMessage = document.getElementById('progressErrorMessage');
+const progressStopBtn = document.getElementById('progressStopBtn');
+const progressContinueBtn = document.getElementById('progressContinueBtn');
+const progressDoneFooter = document.getElementById('progressDoneFooter');
+const progressDoneSummary = document.getElementById('progressDoneSummary');
+const progressCloseBtn = document.getElementById('progressCloseBtn');
+const BULK_TRIGGER_BUTTONS = [backupSelectedBtn, restoreSelectedBtn, updateSelectedBtn, clearAllBtn];
 
 let report = null;          // last ValidationReport
 let backups = [];           // last WledBackupRecord[]
@@ -568,41 +582,39 @@ async function doRestore(name, ip, backupRecord) {
   if (!res.ok) throw new Error(String(res.status));
 }
 
-async function updateToXlights(names) {
+function updateToXlights(names) {
   if (names.length === 0) return;
-  setSummary(`Updating ${names.length === 1 ? names[0] : names.length + ' controllers'}…`);
-  try {
-    const res = await fetch('/api/fix', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ controllers: names }),
-    });
-    if (!res.ok) throw new Error(String(res.status));
-    setSummary(`Updated ${names.length === 1 ? names[0] : names.length + ' controllers'}`);
-    await refreshStatus();
-  } catch (err) {
-    setSummary(`Update failed — ${err.message}`, true);
-  }
+  runSequentialBulk({
+    title: 'Updating Controllers',
+    items: names,
+    action: async name => {
+      const res = await fetch('/api/fix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ controllers: [name] }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    },
+  });
 }
 
 // ── Bulk actions ─────────────────────────────────────────────────────────
 
-async function backupSelected() {
+function backupSelected() {
   const names = [...selected];
   if (names.length === 0) return;
-  setSummary(`Backing up ${names.length} device(s)…`);
-
-  const results = await Promise.allSettled(names.map(name => {
-    const ip = ipForController(name);
-    return fetch(`/api/backups/${encodeURIComponent(name)}?ip=${encodeURIComponent(ip)}`, { method: 'POST' })
-      .then(res => { if (!res.ok) throw new Error(String(res.status)); });
-  }));
-
-  reportBulkOutcome('backed up', names, results);
-  await refreshStatus();
+  runSequentialBulk({
+    title: 'Backing Up Controllers',
+    items: names,
+    action: async name => {
+      const ip = ipForController(name);
+      const res = await fetch(`/api/backups/${encodeURIComponent(name)}?ip=${encodeURIComponent(ip)}`, { method: 'POST' });
+      if (!res.ok) throw new Error(String(res.status));
+    },
+  });
 }
 
-async function restoreSelected() {
+function restoreSelected() {
   const names = [...selected].filter(name => latestBackupFor(name));
   if (names.length === 0) {
     setSummary('None of the selected devices have a backup to restore.', true);
@@ -610,14 +622,11 @@ async function restoreSelected() {
   }
   if (!confirm(`Restore ${names.length} device(s) from their latest backup?\n\n${names.join(', ')}\n\nThis overwrites each device's current config and reboots it.`)) return;
 
-  setSummary(`Restoring ${names.length} device(s)…`);
-  const results = await Promise.allSettled(names.map(name => {
-    const ip = ipForController(name);
-    return doRestore(name, ip, latestBackupFor(name));
-  }));
-
-  reportBulkOutcome('restored', names, results);
-  await refreshStatus();
+  runSequentialBulk({
+    title: 'Restoring Controllers',
+    items: names,
+    action: name => doRestore(name, ipForController(name), latestBackupFor(name)),
+  });
 }
 
 function ipForController(name) {
@@ -627,17 +636,128 @@ function ipForController(name) {
   return dev ? dev.ipAddress : '';
 }
 
-function reportBulkOutcome(verb, names, results) {
-  const failures = results
-    .map((r, i) => ({ r, name: names[i] }))
-    .filter(x => x.r.status === 'rejected');
+// ── Bulk operation progress modal ───────────────────────────────────────
+//
+// Two runners share one modal (#progressModal):
+// - runSequentialBulk: processes items one at a time (Backup/Restore/Update
+//   Selected), so a failure can genuinely pause the batch — the error panel
+//   offers Continue (skip it, keep going) or Stop (abandon the rest).
+// - runAtomicBulk: for operations that are already one indivisible backend
+//   call (Clear All Controllers) — shows an indeterminate bar while the
+//   single request is in flight, then renders the full per-item result at
+//   once from the response. There's nothing to "pause" mid-call.
 
-  if (failures.length === 0) {
-    setSummary(`${names.length}/${names.length} ${verb}`);
-  } else {
-    const detail = failures.map(f => `${f.name}: ${f.r.reason?.message || 'failed'}`).join('; ');
-    setSummary(`${names.length - failures.length}/${names.length} ${verb} — ${detail}`, true);
+const ITEM_ICON = { pending: '·', active: '◐', success: '✓', failed: '✕', skipped: '−' };
+
+function buildItemRow(name, status, detail) {
+  const li = document.createElement('li');
+  li.className = status;
+  li.innerHTML = `<span class="item-icon">${ITEM_ICON[status] || '·'}</span><span>${escapeHtml(name)}${detail ? ' — ' + escapeHtml(detail) : ''}</span>`;
+  return li;
+}
+
+function openProgressModal(title) {
+  BULK_TRIGGER_BUTTONS.forEach(b => { b.disabled = true; });
+  progressTitle.textContent = title;
+  progressBarFill.classList.remove('indeterminate');
+  progressBarFill.style.width = '0%';
+  progressItemList.innerHTML = '';
+  progressErrorPanel.hidden = true;
+  progressDoneFooter.hidden = true;
+  progressModal.hidden = false;
+}
+
+function finishProgressModal(summaryText, isError, onClose) {
+  progressStatusLine.textContent = '';
+  progressDoneSummary.textContent = summaryText;
+  progressDoneFooter.hidden = false;
+  progressCloseBtn.onclick = () => {
+    progressModal.hidden = true;
+    updateBulkButtons();       // re-derives backup/restore/update disabled state from `selected`
+    clearAllBtn.disabled = false;
+    setSummary(summaryText, isError);
+    if (onClose) onClose();
+  };
+}
+
+function runSequentialBulk({ title, items, action }) {
+  const statuses = {};
+  items.forEach(name => { statuses[name] = 'pending'; });
+  let stopped = false;
+  let succeeded = 0;
+  let failed = 0;
+
+  function render() {
+    progressItemList.innerHTML = '';
+    items.forEach(name => progressItemList.appendChild(buildItemRow(name, statuses[name])));
   }
+
+  function done() {
+    const skipped = items.length - succeeded - failed;
+    const summary = `${succeeded}/${items.length} succeeded` +
+      (failed > 0 ? `, ${failed} failed` : '') +
+      (skipped > 0 ? `, ${skipped} skipped` : '');
+    finishProgressModal(summary, failed > 0, () => refreshStatus());
+  }
+
+  function next(index) {
+    if (stopped || index >= items.length) { done(); return; }
+    const name = items[index];
+    statuses[name] = 'active';
+    render();
+    progressStatusLine.textContent = `Processing ${name} (${index + 1} of ${items.length})…`;
+
+    Promise.resolve(action(name)).then(() => {
+      statuses[name] = 'success';
+      succeeded++;
+      render();
+      progressBarFill.style.width = `${Math.round(((index + 1) / items.length) * 100)}%`;
+      next(index + 1);
+    }).catch(err => {
+      statuses[name] = 'failed';
+      failed++;
+      render();
+      progressBarFill.style.width = `${Math.round(((index + 1) / items.length) * 100)}%`;
+      progressErrorName.textContent = name;
+      progressErrorMessage.textContent = err.message || 'Unknown error';
+      progressErrorPanel.hidden = false;
+
+      progressContinueBtn.onclick = () => {
+        progressErrorPanel.hidden = true;
+        next(index + 1);
+      };
+      progressStopBtn.onclick = () => {
+        stopped = true;
+        progressErrorPanel.hidden = true;
+        for (let i = index + 1; i < items.length; i++) statuses[items[i]] = 'skipped';
+        render();
+        done();
+      };
+    });
+  }
+
+  openProgressModal(title);
+  render();
+  progressStatusLine.textContent = `0 of ${items.length} complete`;
+  next(0);
+}
+
+function runAtomicBulk({ title, request, mapResult, onSuccess }) {
+  openProgressModal(title);
+  progressBarFill.classList.add('indeterminate');
+  progressStatusLine.textContent = 'Working…';
+
+  request().then(result => {
+    progressBarFill.classList.remove('indeterminate');
+    progressBarFill.style.width = '100%';
+    const { items, summary } = mapResult(result);
+    progressItemList.innerHTML = '';
+    items.forEach(({ name, status, detail }) => progressItemList.appendChild(buildItemRow(name, status, detail)));
+    finishProgressModal(summary, items.some(i => i.status === 'failed'), onSuccess);
+  }).catch(err => {
+    progressBarFill.classList.remove('indeterminate');
+    finishProgressModal(`Failed: ${err.message}`, true);
+  });
 }
 
 // ── Clear All Controllers ───────────────────────────────────────────────
@@ -662,22 +782,29 @@ function closeClearAllModal() {
   clearAllModal.hidden = true;
 }
 
-async function onClearAllConfirmed() {
-  clearAllConfirmBtn.disabled = true;
-  clearAllCancelBtn.disabled = true;
-  setSummary('Clearing all controllers…');
-  try {
-    const res = await fetch('/api/system/reset', { method: 'POST' });
-    if (!res.ok) throw new Error(String(res.status));
-    const result = await res.json();
-    closeClearAllModal();
-    await resetUiToPreUploadState();
-    reportClearAllOutcome(result);
-  } catch (err) {
-    setSummary(`Clear All failed: ${err.message}`, true);
-  } finally {
-    clearAllCancelBtn.disabled = false;
-  }
+function onClearAllConfirmed() {
+  closeClearAllModal();
+  runAtomicBulk({
+    title: 'Clearing All Controllers',
+    request: async () => {
+      const res = await fetch('/api/system/reset', { method: 'POST' });
+      if (!res.ok) throw new Error(String(res.status));
+      return res.json();
+    },
+    mapResult: result => {
+      const items = result.deviceOutcomes.map(o => ({
+        name: o.name,
+        status: o.success ? 'success' : 'failed',
+        detail: o.success ? null : (o.error || 'unknown error'),
+      }));
+      const succeeded = result.deviceOutcomes.filter(o => o.success).length;
+      const parts = [`${succeeded}/${result.deviceOutcomes.length} device(s) reset`];
+      parts.push(result.backupsCleared ? 'backups cleared' : 'no backups to clear');
+      parts.push(result.configCleared ? 'upload cleared' : 'no upload to clear');
+      return { items, summary: parts.join(', ') };
+    },
+    onSuccess: () => resetUiToPreUploadState(),
+  });
 }
 
 // Un-does the "uploaded" UI state entirely: clears in-memory report/backups/
@@ -697,20 +824,6 @@ async function resetUiToPreUploadState() {
   cardGrid.innerHTML = hint;
   listGrid.innerHTML = hint;
   updateBulkButtons();
-}
-
-function reportClearAllOutcome(result) {
-  const total = result.deviceOutcomes.length;
-  const succeeded = result.deviceOutcomes.filter(o => o.success).length;
-  const parts = [`${succeeded}/${total} device(s) reset`];
-  parts.push(result.backupsCleared ? 'backups cleared' : 'no backups to clear');
-  parts.push(result.configCleared ? 'upload cleared' : 'no upload to clear');
-  const failures = result.deviceOutcomes.filter(o => !o.success);
-  const isError = failures.length > 0;
-  const detail = isError
-    ? ` — failed: ${failures.map(f => `${f.name}: ${f.error || 'unknown error'}`).join('; ')}`
-    : '';
-  setSummary(`Clear All Controllers: ${parts.join(', ')}${detail}`, isError);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
