@@ -111,4 +111,24 @@ class WledBackupServiceTest {
             service.restore("garage-wled", 123456789L, "192.168.1.100")
         }
     }
+
+    @Test
+    fun `deleteAllBackups removes the entire backups tree`() {
+        Mockito.`when`(apiClient.downloadRaw("192.168.1.100", "cfg.json")).thenReturn("""{"hw":{}}""")
+        Mockito.`when`(apiClient.downloadRaw("192.168.1.100", "presets.json")).thenReturn("""{"0":{}}""")
+        service.backup(device)
+        val backupsDir = dataDir.resolve("backups")
+        assertTrue(backupsDir.exists())
+
+        val result = service.deleteAllBackups()
+
+        assertTrue(result)
+        assertFalse(backupsDir.exists())
+        assertTrue(service.listBackups().isEmpty())
+    }
+
+    @Test
+    fun `deleteAllBackups returns false harmlessly when no backups exist`() {
+        assertFalse(service.deleteAllBackups())
+    }
 }

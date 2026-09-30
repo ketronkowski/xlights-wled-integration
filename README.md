@@ -23,6 +23,7 @@ This app answers that question, and can fix the drift for you:
 - **Validate** — upload your xLights show's config, and it live-checks every controller against its actual WLED device: LED count, segment ranges, and which segments should be off ("null" models).
 - **Fix** — push the corrected segment layout to a device in one click (or in bulk).
 - **Never lose a config again** — every fix is preceded by an automatic backup of that device's `cfg.json` and `presets.json` (network config + presets/playlists), because segment fixes used to be applied blind with no way to recover if something went wrong. Manual backup/restore is available any time, not just around fixes.
+- **Start fresh** — "Clear All Controllers" resets every reachable WLED device to its own hardware-default segments and wipes all locally stored backups and the uploaded xLights config in one confirmed action, for when a season's layout is retired and you want a clean slate. There's no backup-before-wipe here — it's deliberately final.
 
 It originally started life as a local-only Kotlin CLI you had to run on one specific Macbook. It's now a small web app that lives in the homelab Kubernetes cluster, reachable from any browser on the network — no terminal, no "which laptop has the right JAR" required.
 
@@ -75,6 +76,7 @@ flowchart LR
 | `validation` | Compares xLights' expected layout against live WLED state and applies fixes (`ValidationService`) |
 | `web` | REST controllers: upload, validate/fix, backups |
 | `domain` | Plain data classes shared across the above |
+| `system` | Orchestrates the destructive "Clear All Controllers" reset (`SystemResetService`) |
 
 ### REST API
 
@@ -88,6 +90,7 @@ flowchart LR
 | `GET` | `/api/backups` | List backups (optionally `?controller=Octa1`) |
 | `POST` | `/api/backups/{controller}` | Manual backup-now |
 | `POST` | `/api/backups/{controller}/restore/{timestamp}` | Restore a backup and reboot the device |
+| `POST` | `/api/system/reset` | Factory reset: every reachable WLED device to hardware-default segments + delete all backups and the uploaded config (no backup taken first) |
 
 ## Running locally
 

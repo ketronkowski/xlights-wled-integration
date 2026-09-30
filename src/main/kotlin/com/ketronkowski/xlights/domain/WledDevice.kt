@@ -8,4 +8,5 @@ data class WledDevice(
     val bytesPerPixel: Int,   // derived from LED type: 3=RGB, 4=RGBW
     val maxSegments: Int,
     val segments: List<WledSegment>,
+    val busses: List<WledBus> = emptyList(),   // one entry per hardware LED output/bus, from /json/cfg's hw.led.ins
 )

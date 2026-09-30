@@ -4,11 +4,14 @@ import com.ketronkowski.xlights.domain.*
 import com.ketronkowski.xlights.wled.WledApiClient
 import com.ketronkowski.xlights.wled.WledBackupService
 import com.ketronkowski.xlights.wled.WledDiscovery
+import com.ketronkowski.xlights.wled.dto.WledSegmentPatch
+import com.ketronkowski.xlights.wled.dto.WledStatePatch
 import com.ketronkowski.xlights.xlights.XLightsConfigParser
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.atLeastOnce
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -149,6 +152,65 @@ class ValidationServiceTest {
         service.fixAll(report)
 
         verify(apiClient, never()).patchState(any(), any())
+    }
+
+    // ── resetToBusDefaults() ─────────────────────────────────────────────────
+
+    @Test
+    fun `resetToBusDefaults creates one segment per bus`() {
+        val apiClient = mock<WledApiClient>()
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, mock<WledBackupService>())
+
+        val device = perfectDevice.copy(
+            segments = perfectDevice.segments, // has ids 0, 1, 2 — ids 1 and 2 should get deleted in step 2
+            busses = listOf(WledBus(start = 0, len = 150), WledBus(start = 150, len = 150)),
+        )
+
+        service.resetToBusDefaults(device)
+
+        val order = inOrder(apiClient)
+        order.verify(apiClient).patchState(eq(device.ipAddress), eq(WledStatePatch(listOf(
+            WledSegmentPatch(id = 0, start = 0, stop = 300, on = true)
+        ))))
+        order.verify(apiClient).patchState(eq(device.ipAddress), eq(WledStatePatch(listOf(
+            WledSegmentPatch(id = 1, start = 0, stop = 0),
+            WledSegmentPatch(id = 2, start = 0, stop = 0),
+        ))))
+        order.verify(apiClient).patchState(eq(device.ipAddress), eq(WledStatePatch(listOf(
+            WledSegmentPatch(id = 0, start = 0, stop = 150, on = true)
+        ))))
+        order.verify(apiClient).patchState(eq(device.ipAddress), eq(WledStatePatch(listOf(
+            WledSegmentPatch(id = 1, start = 150, stop = 300, on = true)
+        ))))
+    }
+
+    @Test
+    fun `resetToBusDefaults falls back to a single full-range segment when busses are empty`() {
+        val apiClient = mock<WledApiClient>()
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, mock<WledBackupService>())
+
+        val device = perfectDevice.copy(segments = emptyList(), busses = emptyList())
+
+        service.resetToBusDefaults(device)
+
+        // Step 1 (collapse) and step 3 (single fallback segment) both patch the
+        // same full-range segment here — assert the call count and payload
+        // directly rather than with inOrder, since inOrder verification of two
+        // identical invocations doesn't behave as a naive "verify twice" would.
+        verify(apiClient, org.mockito.kotlin.times(2)).patchState(eq(device.ipAddress), eq(WledStatePatch(listOf(
+            WledSegmentPatch(id = 0, start = 0, stop = 300, on = true)
+        ))))
+    }
+
+    @Test
+    fun `resetToBusDefaults never backs up the device first`() {
+        val apiClient = mock<WledApiClient>()
+        val backupService = mock<WledBackupService>()
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService)
+
+        service.resetToBusDefaults(perfectDevice)
+
+        verify(backupService, never()).backup(any())
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

@@ -25,6 +25,13 @@ const filterInputs = {
 };
 const showSelectedOnlyToggle = document.getElementById('showSelectedOnlyToggle');
 const selectionSummaryEl = document.getElementById('selectionSummary');
+const clearAllBtn = document.getElementById('clearAllBtn');
+const clearAllModal = document.getElementById('clearAllModal');
+const clearAllOpsList = document.getElementById('clearAllOpsList');
+const clearAllConfirmInput = document.getElementById('clearAllConfirmInput');
+const clearAllConfirmBtn = document.getElementById('clearAllConfirmBtn');
+const clearAllCancelBtn = document.getElementById('clearAllCancelBtn');
+const CLEAR_ALL_PHRASE = 'DELETE EVERYTHING';
 
 let report = null;          // last ValidationReport
 let backups = [];           // last WledBackupRecord[]
@@ -75,6 +82,12 @@ function init() {
   backupSelectedBtn.addEventListener('click', backupSelected);
   restoreSelectedBtn.addEventListener('click', restoreSelected);
   updateSelectedBtn.addEventListener('click', () => updateToXlights([...selected]));
+  clearAllBtn.addEventListener('click', openClearAllModal);
+  clearAllCancelBtn.addEventListener('click', closeClearAllModal);
+  clearAllConfirmInput.addEventListener('input', () => {
+    clearAllConfirmBtn.disabled = clearAllConfirmInput.value !== CLEAR_ALL_PHRASE;
+  });
+  clearAllConfirmBtn.addEventListener('click', onClearAllConfirmed);
 
   Object.entries(filterInputs).forEach(([field, el]) => {
     // Selects fire 'change', not 'input', in a way that reliably covers
@@ -625,6 +638,79 @@ function reportBulkOutcome(verb, names, results) {
     const detail = failures.map(f => `${f.name}: ${f.r.reason?.message || 'failed'}`).join('; ');
     setSummary(`${names.length - failures.length}/${names.length} ${verb} — ${detail}`, true);
   }
+}
+
+// ── Clear All Controllers ───────────────────────────────────────────────
+
+function openClearAllModal() {
+  const deviceNames = buildRowModel().map(r => r.name); // live report + unpaired devices currently known client-side
+  const backupCount = backups.length;
+  const hasUpload = uploadStatusEl.textContent.startsWith('Last uploaded');
+
+  clearAllOpsList.innerHTML = `
+    <li>Reset ${deviceNames.length ? deviceNames.length + ' known device(s) (' + escapeHtml(deviceNames.join(', ')) + ')' : 'every reachable WLED device found via mDNS'} to WLED's hardware-default segments (best-effort — unreachable devices are skipped)</li>
+    <li>Delete ${backupCount > 0 ? 'all ' + backupCount + ' saved backup(s)' : 'all saved backups (none currently exist)'}</li>
+    <li>${hasUpload ? 'Delete the uploaded xLights show config' : 'No xLights show is currently uploaded — nothing to delete here'}</li>
+  `;
+  clearAllConfirmInput.value = '';
+  clearAllConfirmBtn.disabled = true;
+  clearAllModal.hidden = false;
+  clearAllConfirmInput.focus();
+}
+
+function closeClearAllModal() {
+  clearAllModal.hidden = true;
+}
+
+async function onClearAllConfirmed() {
+  clearAllConfirmBtn.disabled = true;
+  clearAllCancelBtn.disabled = true;
+  setSummary('Clearing all controllers…');
+  try {
+    const res = await fetch('/api/system/reset', { method: 'POST' });
+    if (!res.ok) throw new Error(String(res.status));
+    const result = await res.json();
+    closeClearAllModal();
+    await resetUiToPreUploadState();
+    reportClearAllOutcome(result);
+  } catch (err) {
+    setSummary(`Clear All failed: ${err.message}`, true);
+  } finally {
+    clearAllCancelBtn.disabled = false;
+  }
+}
+
+// Un-does the "uploaded" UI state entirely: clears in-memory report/backups/
+// selection, re-fetches upload status (now 404 → "No upload yet."), and
+// re-renders both grids back to their static pre-upload hint text (the same
+// markup index.html ships with, not noRowsMessage()'s different wording).
+async function resetUiToPreUploadState() {
+  report = null;
+  backups = [];
+  selected.clear();
+  sortColumn = null;
+  await loadUploadStatus();
+  folderLabelEl.textContent = '';
+  pendingUpload = null;
+  uploadBtn.disabled = true;
+  const hint = '<p class="empty-hint">Upload an xLights show folder to see your WLED devices here.</p>';
+  cardGrid.innerHTML = hint;
+  listGrid.innerHTML = hint;
+  updateBulkButtons();
+}
+
+function reportClearAllOutcome(result) {
+  const total = result.deviceOutcomes.length;
+  const succeeded = result.deviceOutcomes.filter(o => o.success).length;
+  const parts = [`${succeeded}/${total} device(s) reset`];
+  parts.push(result.backupsCleared ? 'backups cleared' : 'no backups to clear');
+  parts.push(result.configCleared ? 'upload cleared' : 'no upload to clear');
+  const failures = result.deviceOutcomes.filter(o => !o.success);
+  const isError = failures.length > 0;
+  const detail = isError
+    ? ` — failed: ${failures.map(f => `${f.name}: ${f.error || 'unknown error'}`).join('; ')}`
+    : '';
+  setSummary(`Clear All Controllers: ${parts.join(', ')}${detail}`, isError);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────

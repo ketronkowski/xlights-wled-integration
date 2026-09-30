@@ -38,7 +38,15 @@ data class WledCfgResponse(
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class WledHwConfig(
-    val com: List<WledBusConfig> = emptyList(),
+    val led: WledLedConfig = WledLedConfig(),
+)
+
+// Per-output LED bus config actually lives at hw.led.ins — NOT hw.com, which is
+// WLED's (usually-empty) serial/COM port config and unrelated to LED outputs.
+// Confirmed against real QuinLED-Dig-Octa firmware /json/cfg output.
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class WledLedConfig(
+    val ins: List<WledBusConfig> = emptyList(),
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
