@@ -136,7 +136,9 @@ If you're standing this up on your own cluster, here's what it expects:
 
 ## CI/CD
 
-Every push to `main` runs: **test** → **build & push** a multi-arch image to `ghcr.io/ketronkowski/xlights-wled-integration` → **patch** the GitOps deploy repo's image tag, which ArgoCD then syncs automatically. Pull requests only run the test stage.
+Every push to `main` runs: **test** → **build & push** a multi-arch image to `ghcr.io/ketronkowski/xlights-wled-integration` → **patch** the GitOps deploy repo's image tag, which ArgoCD then syncs automatically.
+
+Every pull request also gets its own **live preview environment** — a build tagged `pr-<number>` is deployed to an isolated namespace on the homelab cluster and reachable at `https://xlights-wled.lab.ri.tronkowski.net/pr-<number>/`, completely separate from production. The link is posted as a comment on the PR, updates automatically on every push, and is torn down automatically (namespace, deploy-repo files, everything) as soon as the PR is closed — merged or not.
 
 `main` is a protected branch — every change, including the maintainer's own, goes through a pull request with passing CI before it merges.
 

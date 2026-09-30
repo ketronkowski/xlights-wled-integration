@@ -128,7 +128,7 @@ function init() {
 
 async function loadUploadStatus() {
   try {
-    const res = await fetch('/api/upload/status');
+    const res = await fetch('api/upload/status');
     if (res.status === 404) {
       uploadStatusEl.textContent = 'No upload yet.';
       folderLabelEl.textContent = '';
@@ -204,7 +204,7 @@ async function onUploadClicked() {
       pendingUpload.networksFile.text(),
       pendingUpload.effectsFile.text(),
     ]);
-    const res = await fetch('/api/upload', {
+    const res = await fetch('api/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ networksXml, effectsXml, folderLabel: pendingUpload.folderLabel }),
@@ -226,12 +226,12 @@ async function refreshStatus() {
   setSummary('Refreshing status…');
   try {
     const [reportRes, backupsRes] = await Promise.all([
-      fetch('/api/validate', {
+      fetch('api/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
       }),
-      fetch('/api/backups'),
+      fetch('api/backups'),
     ]);
     if (!reportRes.ok) throw new Error(`validate: ${reportRes.status}`);
     if (!backupsRes.ok) throw new Error(`backups: ${backupsRes.status}`);
@@ -567,7 +567,7 @@ function updateSelectionSummary() {
 async function doRestore(name, ip, backupRecord) {
   const ts = new Date(backupRecord.timestamp).getTime();
   const res = await fetch(
-    `/api/backups/${encodeURIComponent(name)}/restore/${ts}?ip=${encodeURIComponent(ip)}`,
+    `api/backups/${encodeURIComponent(name)}/restore/${ts}?ip=${encodeURIComponent(ip)}`,
     { method: 'POST' },
   );
   if (!res.ok) throw new Error(String(res.status));
@@ -577,7 +577,7 @@ async function updateToXlights(names) {
   if (names.length === 0) return;
   setSummary(`Updating ${names.length === 1 ? names[0] : names.length + ' controllers'}…`);
   try {
-    const res = await fetch('/api/fix', {
+    const res = await fetch('api/fix', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ controllers: names }),
@@ -599,7 +599,7 @@ async function backupSelected() {
 
   const results = await Promise.allSettled(names.map(name => {
     const ip = ipForController(name);
-    return fetch(`/api/backups/${encodeURIComponent(name)}?ip=${encodeURIComponent(ip)}`, { method: 'POST' })
+    return fetch(`api/backups/${encodeURIComponent(name)}?ip=${encodeURIComponent(ip)}`, { method: 'POST' })
       .then(res => { if (!res.ok) throw new Error(String(res.status)); });
   }));
 
@@ -672,7 +672,7 @@ async function onClearAllConfirmed() {
   clearAllCancelBtn.disabled = true;
   setSummary('Clearing all controllers…');
   try {
-    const res = await fetch('/api/system/reset', { method: 'POST' });
+    const res = await fetch('api/system/reset', { method: 'POST' });
     if (!res.ok) throw new Error(String(res.status));
     const result = await res.json();
     closeClearAllModal();
