@@ -230,7 +230,8 @@ jobs:
           BODY="🔎 **Preview environment:** $URL
 
           Updates automatically on every push to this PR. Torn down automatically when the PR is closed."
-          gh pr comment "$PR" --edit-last --body "$BODY" 2>/dev/null || gh pr comment "$PR" --body "$BODY"
+          gh pr comment "$PR" --repo "${{ github.repository }}" --edit-last --body "$BODY" 2>/dev/null || \
+            gh pr comment "$PR" --repo "${{ github.repository }}" --body "$BODY"
 
   # ── Preview: Cleanup ─────────────────────────────────────────────────────
   preview-cleanup:
