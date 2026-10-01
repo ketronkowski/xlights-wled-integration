@@ -99,6 +99,28 @@
     </div>
   </div>
 
+  <div id="progressModal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="progressTitle">
+      <h2 id="progressTitle">Working…</h2>
+      <div class="progress-bar-track">
+        <div id="progressBarFill" class="progress-bar-fill"></div>
+      </div>
+      <p id="progressStatusLine" class="progress-status-line"></p>
+      <ul id="progressItemList" class="bulk-item-list"></ul>
+      <div id="progressErrorPanel" class="bulk-error-panel" hidden>
+        <p><strong id="progressErrorName"></strong> failed: <span id="progressErrorMessage"></span></p>
+        <div class="modal-actions">
+          <button id="progressStopBtn" type="button">Stop</button>
+          <button id="progressContinueBtn" class="action" type="button">Continue</button>
+        </div>
+      </div>
+      <div id="progressDoneFooter" class="done-footer" hidden>
+        <span id="progressDoneSummary" class="status-line"></span>
+        <button id="progressCloseBtn" class="action" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
