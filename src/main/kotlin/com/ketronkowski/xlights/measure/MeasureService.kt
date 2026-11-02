@@ -24,6 +24,10 @@ data class MeasureTarget(
     val segmentId: Int,
     val segmentStart: Int,
     val segmentStop: Int,
+    // On/brightness from before measuring began. The page keeps these so it can still
+    // restore them if the app restarts mid-measure and forgets its session.
+    val originalOn: Boolean? = null,
+    val originalBri: Int? = null,
 )
 
 /**
@@ -64,7 +68,7 @@ class MeasureService(
         sessions[ip] = Session(target, original.first, original.second)
         apiClient.postState(ip, mapOf("on" to true, "bri" to clampBri(brightness), "lor" to 2))
         log.info("Measuring session started on {} port {} (segment {})", ip, port, target.segmentId)
-        return target
+        return target.copy(originalOn = original.first, originalBri = original.second)
     }
 
     fun paint(ip: String, ranges: List<PaintRange>, brightness: Int?) {
@@ -77,11 +81,25 @@ class MeasureService(
         apiClient.postState(ip, body)
     }
 
-    fun stop(ip: String) {
-        val session = sessions.remove(ip) ?: return
-        unfreeze(ip, session.target.segmentId)
-        apiClient.postState(ip, mapOf("on" to session.originalOn, "bri" to session.originalBri, "lor" to 0))
-        log.info("Measuring session on {} stopped and restored", ip)
+    /**
+     * Restores the device. [restoreOn]/[restoreBri], when the page sends them, win over the
+     * session's: after an app restart the session is rebuilt mid-measure and would otherwise
+     * "restore" the measuring brightness. With no session at all, a [port] still lets it
+     * unfreeze that port's segment; live data is always turned back on.
+     */
+    fun stop(ip: String, port: Int? = null, restoreOn: Boolean? = null, restoreBri: Int? = null) {
+        val session = sessions.remove(ip)
+        val segmentId = session?.target?.segmentId
+            ?: port?.let { resolveTarget(apiClient.fetchDevice(ip), it).segmentId }
+        if (segmentId != null) unfreeze(ip, segmentId)
+        val on = restoreOn ?: session?.originalOn
+        val bri = restoreBri ?: session?.originalBri
+        apiClient.postState(ip, buildMap {
+            if (on != null) put("on", on)
+            if (bri != null) put("bri", clampBri(bri))
+            put("lor", 0)
+        })
+        log.info("Measuring on {} stopped (session {}, port {})", ip, if (session != null) "found" else "lost", port)
     }
 
     fun activeSessions(): List<MeasureTarget> = sessions.values.map { it.target }

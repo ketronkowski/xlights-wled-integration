@@ -107,6 +107,23 @@ class MeasureServiceTest {
     }
 
     @Test
+    fun `stop without a session still unfreezes the port and restores what the page kept`() {
+        service.stop(ip, 2, restoreOn = true, restoreBri = 200)
+
+        val bodies = argumentCaptor<Map<String, Any?>>()
+        verify(apiClient, times(2)).postState(eq(ip), bodies.capture())
+        assertEquals(mapOf("seg" to listOf(mapOf("id" to 1, "frz" to false))), bodies.firstValue)
+        assertEquals(mapOf("on" to true, "bri" to 200, "lor" to 0), bodies.secondValue)
+    }
+
+    @Test
+    fun `start reports the original brightness so the page can keep it`() {
+        val t = service.start(ip, 1, brightness = 80)
+        assertEquals(200, t.originalBri)
+        assertEquals(true, t.originalOn)
+    }
+
+    @Test
     fun `paint without a session is rejected`() {
         assertThrows(IllegalArgumentException::class.java) { service.paint(ip, emptyList(), null) }
     }

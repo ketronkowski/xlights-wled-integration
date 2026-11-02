@@ -18,7 +18,12 @@ import org.springframework.web.client.RestClientException
 
 data class MeasureStartRequest(val ip: String, val port: Int, val brightness: Int = 80)
 data class MeasurePaintRequest(val ip: String, val ranges: List<PaintRange>, val brightness: Int? = null)
-data class MeasureStopRequest(val ip: String)
+data class MeasureStopRequest(
+    val ip: String,
+    val port: Int? = null,
+    val restoreOn: Boolean? = null,
+    val restoreBri: Int? = null,
+)
 data class MeasureError(val error: String)
 
 @RestController
@@ -35,7 +40,7 @@ class MeasureController(
         measureService.paint(req.ip, req.ranges, req.brightness)
 
     @PostMapping("/stop")
-    fun stop(@RequestBody req: MeasureStopRequest) = measureService.stop(req.ip)
+    fun stop(@RequestBody req: MeasureStopRequest) = measureService.stop(req.ip, req.port, req.restoreOn, req.restoreBri)
 
     @GetMapping("/sessions")
     fun sessions(): List<MeasureTarget> = measureService.activeSessions()

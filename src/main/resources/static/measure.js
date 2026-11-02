@@ -185,6 +185,26 @@ async function paintNow() {
     });
     setStatus(`Lit ${controller().name} port ${session.port}`);
   } catch (e) {
+    if (/start one first/.test(e.message)) {
+      // The app restarted and forgot the session: take the port over again, then repaint.
+      const s0 = session;
+      try {
+        await api('start', {
+          method: 'POST',
+          body: JSON.stringify({ ip: s0.ip, port: s0.port, brightness: Number($('bri').value) }),
+        });
+      } catch (e2) {
+        setStatus(e2.message, true);
+        return;
+      }
+      // Done was tapped while we were reconnecting: release the controller again.
+      if (!session) {
+        await api('stop', { method: 'POST', body: JSON.stringify({ ip: s0.ip, port: s0.port, restoreOn: s0.restoreOn, restoreBri: s0.restoreBri }) }).catch(() => {});
+        return;
+      }
+      paintAgain = true;
+      return;
+    }
     setStatus(e.message, true);
   } finally {
     painting = false;
@@ -201,25 +221,28 @@ async function startSession() {
       method: 'POST',
       body: JSON.stringify({ ip: c.ip, port: p.port, brightness: Number($('bri').value) }),
     });
-    session = { ip: c.ip, port: p.port, busLen: t.busLen };
+    session = { ip: c.ip, port: p.port, busLen: t.busLen, restoreOn: t.originalOn, restoreBri: t.originalBri };
     $('startBtn').disabled = true;
     $('stopBtn').disabled = false;
     startBlink();
     render();
     paintNow();
   } catch (e) {
+    clearInterval(blinkTimer);
+    $('startBtn').disabled = false;
+    $('stopBtn').disabled = true;
     setStatus(e.message, true);
   }
 }
 
 async function stopSession() {
   if (!session) return;
-  const ip = session.ip;
+  const { ip, port: portNo, restoreOn, restoreBri } = session;
   session = null;
   clearInterval(blinkTimer);
   blinkTimer = null;
   try {
-    await api('stop', { method: 'POST', body: JSON.stringify({ ip }) });
+    await api('stop', { method: 'POST', body: JSON.stringify({ ip, port: portNo, restoreOn, restoreBri }) });
     setStatus('Controller restored. Live data from FPP/xLights is accepted again.');
   } catch (e) {
     setStatus('Restore failed: ' + e.message + ' (a reboot of the controller also restores it)', true);
@@ -481,7 +504,7 @@ async function init() {
   };
   // Leaving the page with the lights frozen would keep FPP locked out until reboot.
   window.addEventListener('pagehide', () => {
-    if (session) navigator.sendBeacon('api/measure/stop', new Blob([JSON.stringify({ ip: session.ip })], { type: 'application/json' }));
+    if (session) navigator.sendBeacon('api/measure/stop', new Blob([JSON.stringify({ ip: session.ip, port: session.port, restoreOn: session.restoreOn, restoreBri: session.restoreBri })], { type: 'application/json' }));
   });
 }
 
