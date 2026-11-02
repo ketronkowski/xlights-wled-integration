@@ -26,6 +26,10 @@
         <input type="range" id="bri" min="10" max="255" value="80" />
       </label>
     </div>
+    <div class="m-row m-toggles">
+      <label class="m-check"><input type="checkbox" id="blink" checked /> Blink the marker</label>
+      <label class="m-check"><input type="checkbox" id="focus" checked /> Light only what I'm measuring</label>
+    </div>
     <div class="m-row">
       <button id="startBtn" class="action" type="button">Light it up</button>
       <button id="stopBtn" class="action danger" type="button" disabled>Done (restore)</button>
@@ -60,7 +64,7 @@
     <div class="m-legend">
       <span><i style="background:#ff2020"></i>spare (null)</span>
       <span><i style="background:#20ff40"></i>being measured</span>
-      <span><i style="background:#ffffff"></i>marker pixel</span>
+      <span><i style="background:#ffffff"></i>marker pixel (blinks)</span>
       <span><i style="background:#20e0ff"></i>done</span>
     </div>
 

@@ -107,6 +107,8 @@ Each model is measured in steps, one thing at a time (red is always spare pixels
 2. **Each side, in wiring order** (for example right, top, left, bottom): the side being measured is green with a white marker on its last pixel. Move it until the marker sits on that corner. Sides already measured are blue.
 3. **Review**: the whole frame alternates green and blue with a white pixel at each corner. Red after it is the null after this model. **Save & next model** stores it and moves on.
 
+The marker flashes about once a second so a single pixel is easy to spot from the street. **Light only what I'm measuring** (on by default) turns everything else off: the start step shows only the spares before the model and its first side, and the spares after it only appear from the last side on. That keeps a corner where the string starts, ends and has spare pixels dangling (bottom right, on most of these windows) readable.
+
 Left and right, and top and bottom, are measured separately because they don't always match. The page flags unequal pairs, since xLights' Window Frame model has a single count for both sides. Unsaved models later on the string move along with each change, and the results table (copyable as Markdown) lists each model's first pixel, side counts and nulls.
 
 While it's lit the controller ignores live DDP data (`lor: 2`), so stop FPP playback first. **Done (restore)** unfreezes the segment, restores the brightness and turns live data back on; leaving the page does the same, and a reboot always does. Nothing is written to the controller's config or presets. The port must be covered by a single WLED segment.

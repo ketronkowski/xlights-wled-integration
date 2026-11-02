@@ -15,7 +15,9 @@ const COLORS = {
   pending: '0A3020',
   otherA: '0A4014',
   otherB: '0A3848',
+  doneDim: '06202C',
 };
+const OFF = '000000';
 
 const $ = (id) => document.getElementById(id);
 
@@ -26,6 +28,8 @@ let session = null;   // { ip, port, busLen } while lit
 let paintTimer = null;
 let painting = false;
 let paintAgain = false;
+let blinkTimer = null;
+let markerOn = true;
 
 // ── Derived values ─────────────────────────────────────────────────────────
 
@@ -45,33 +49,55 @@ function gapAfter(items, idx, busLen) {
   return busLen == null ? null : busLen - endOf(items[idx]);
 }
 
-// Ranges to paint for the whole port. Anything not on a model is red: those are the
-// spare pixels that become null models in xLights. Other models are dim so you can see
-// where they sit. The current model is lit according to the step you're on.
-function paintRanges(items, current, curStep, busLen) {
+// Ranges to paint for the whole port. Spare pixels (which become null models in
+// xLights) are red. The current model is lit according to the step you're on.
+//
+// opts.focus lights only what is being measured: the current model's spares before and
+// after it, its finished sides dimly, and the side being measured; everything else is
+// off. That matters at a corner where the start, the end and the dangling spares meet.
+// opts.markerOn is false on the "off" half of a blink, so the marker flashes.
+function paintRanges(items, current, curStep, busLen, opts = {}) {
+  const focus = !!opts.focus;
+  const marker = opts.markerOn === false ? OFF : COLORS.marker;
   const total = busLen ?? Math.max(...items.map(endOf));
-  const ranges = [{ start: 0, stop: total, color: COLORS.spare }];
+  const ranges = [];
+  if (focus) {
+    const cur = items[current];
+    const spareFrom = current === 0 ? 0 : endOf(items[current - 1]);
+    const spareTo = current === items.length - 1 ? total : items[current + 1].first;
+    const n = cur.sides.length;
+    // Spares before only while finding the start, spares after only from the last side
+    // on, so the corner where both meet never shows both at once (except in review).
+    if (curStep === 0 || curStep > n) ranges.push({ start: spareFrom, stop: cur.first, color: COLORS.spare });
+    if (curStep >= n) ranges.push({ start: endOf(cur), stop: spareTo, color: COLORS.spare });
+  } else {
+    ranges.push({ start: 0, stop: total, color: COLORS.spare });
+  }
   items.forEach((it, idx) => {
     let pos = it.first;
     const n = it.sides.length;
     it.sides.forEach((len, s) => {
       const stop = pos + len;
       if (idx !== current) {
-        ranges.push({ start: pos, stop, color: s % 2 === 0 ? COLORS.otherA : COLORS.otherB });
+        // In focus mode other models stay off (the port starts black).
+        if (!focus) ranges.push({ start: pos, stop, color: s % 2 === 0 ? COLORS.otherA : COLORS.otherB });
       } else if (curStep === 0) {
-        // Finding the start: the model is dim, its first pixel is the marker.
-        ranges.push({ start: pos, stop, color: COLORS.pending });
-        if (s === 0) ranges.push({ start: pos, stop: pos + 1, color: COLORS.marker });
+        // Finding the start: the first side is lit, its first pixel is the marker.
+        const color = s === 0 ? (focus ? COLORS.active : COLORS.pending) : (focus ? null : COLORS.pending);
+        if (color) ranges.push({ start: pos, stop, color });
+        if (s === 0 && len > 0) ranges.push({ start: pos, stop: pos + 1, color: marker });
       } else if (curStep <= n) {
         // Finding the end of side (curStep - 1): its last pixel is the marker.
         const k = curStep - 1;
-        const color = s < k ? COLORS.done : s === k ? COLORS.active : COLORS.pending;
-        ranges.push({ start: pos, stop, color });
-        if (s === k && len > 0) ranges.push({ start: stop - 1, stop, color: COLORS.marker });
+        const color = s < k ? (focus ? COLORS.doneDim : COLORS.done)
+          : s === k ? COLORS.active
+          : (focus ? null : COLORS.pending);
+        if (color) ranges.push({ start: pos, stop, color });
+        if (s === k && len > 0) ranges.push({ start: stop - 1, stop, color: marker });
       } else {
         // Review: sides alternate colors, first pixel of each side is the marker.
         ranges.push({ start: pos, stop, color: s % 2 === 0 ? COLORS.active : COLORS.done });
-        if (len > 0) ranges.push({ start: pos, stop: pos + 1, color: COLORS.marker });
+        if (len > 0) ranges.push({ start: pos, stop: pos + 1, color: marker });
       }
       pos = stop;
     });
@@ -143,7 +169,10 @@ async function paintNow() {
       body: JSON.stringify({
         ip: session.ip,
         brightness: Number($('bri').value),
-        ranges: paintRanges(port().items, sel.i, step, session.busLen),
+        ranges: paintRanges(port().items, sel.i, step, session.busLen, {
+          focus: $('focus').checked,
+          markerOn: !$('blink').checked || markerOn,
+        }),
       }),
     });
     setStatus(`Lit ${controller().name} port ${session.port}`);
@@ -167,6 +196,7 @@ async function startSession() {
     session = { ip: c.ip, port: p.port, busLen: t.busLen };
     $('startBtn').disabled = true;
     $('stopBtn').disabled = false;
+    startBlink();
     render();
     paintNow();
   } catch (e) {
@@ -178,6 +208,8 @@ async function stopSession() {
   if (!session) return;
   const ip = session.ip;
   session = null;
+  clearInterval(blinkTimer);
+  blinkTimer = null;
   try {
     await api('stop', { method: 'POST', body: JSON.stringify({ ip }) });
     setStatus('Controller restored. Live data from FPP/xLights is accepted again.');
@@ -187,6 +219,17 @@ async function stopSession() {
   $('startBtn').disabled = false;
   $('stopBtn').disabled = true;
   render();
+}
+
+// The marker flashes about once a second, which is far easier to spot from the
+// street than one steady white pixel. A blink tick is skipped while a paint is in flight.
+function startBlink() {
+  clearInterval(blinkTimer);
+  blinkTimer = setInterval(() => {
+    if (!session || !$('blink').checked || painting) return;
+    markerOn = !markerOn;
+    paintNow();
+  }, 550);
 }
 
 // ── Editing ────────────────────────────────────────────────────────────────
@@ -304,18 +347,20 @@ function render() {
   document.querySelectorAll('[data-step]').forEach((b) => { b.disabled = !adjustable; });
   if (step === 0) {
     $('stepTitle').textContent = `Step 1 of ${n + 2}: find the first pixel`;
-    $('stepHelp').textContent = 'Move until the white pixel is the first one on the frame. Red pixels before it are spare and become the null.';
+    $('stepHelp').textContent = 'Move until the flashing pixel is the first one on the frame (where the string first touches it). Red pixels before it are spare.';
     $('stepLabel').innerHTML = `Start pixel <b>${it.first}</b>`;
   } else if (adjustable) {
     const name = it.sideNames?.[step - 1] ?? `side ${step}`;
     $('stepTitle').textContent = `Step ${step + 1} of ${n + 2}: ${name}`;
     $('stepHelp').textContent = n === 1
-      ? 'Move until the white pixel is the last one on the model.'
-      : `Move until the white pixel sits on the corner where the ${name} ends. Blue is already measured.`;
+      ? 'Move until the flashing pixel is the last one on the model.'
+      : `Move until the flashing pixel sits on the corner where the ${name} ends. Blue is already measured.`;
     $('stepLabel').innerHTML = `${cap(name)} pixels <b>${it.sides[step - 1]}</b>`;
   } else {
     $('stepTitle').textContent = `Step ${n + 2} of ${n + 2}: check and save`;
-    $('stepHelp').textContent = 'Each side alternates green and blue, with a white pixel at each corner. Red after the frame is spare.';
+    const tail = gapAfter(items, sel.i, busLen);
+    $('stepHelp').textContent = 'Each side alternates green and blue, with a white pixel at each corner. '
+      + (tail == null ? 'Red after the frame is spare.' : `Red after the frame is spare: count the red pixels hanging off the end, there should be ${tail}.`);
     $('stepLabel').textContent = '';
   }
   $('nextBtn').textContent = adjustable ? 'Next \u2192' : (sel.i < items.length - 1 ? 'Save & next model' : 'Save');
@@ -403,6 +448,8 @@ async function init() {
   $('startBtn').onclick = startSession;
   $('stopBtn').onclick = stopSession;
   $('bri').oninput = schedulePaint;
+  $('focus').onchange = schedulePaint;
+  $('blink').onchange = () => { markerOn = true; schedulePaint(); };
   document.querySelectorAll('[data-step]').forEach((b) => {
     b.onclick = () => adjust(Number(b.dataset.step));
   });
