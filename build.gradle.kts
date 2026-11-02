@@ -40,6 +40,10 @@ tasks.test {
     useJUnitPlatform()
 }
 
+springBoot {
+    buildInfo()
+}
+
 tasks.bootJar {
     archiveFileName.set("xlights-wled-integration.jar")
 }
