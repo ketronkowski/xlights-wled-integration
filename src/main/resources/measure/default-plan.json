@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Starting guesses come from the current xLights layout, which still has the windows on Octa2. 'first' is the port-relative index of the first pixel on the model; 'sides' are pixel counts in wiring order.",
+  "note": "Starting guesses come from the current xLights layout, which still has the windows on Octa2. Windows default to starting bottom right and running counter-clockwise (Kevin: true for most); change per window on the page. 'first' is the port-relative index of the first frame pixel, 'lead' the spare pixels on the model's own string before it, 'sides' are pixel counts in wiring order.",
   "controllers": [
     {
       "name": "Octa6",
@@ -26,7 +26,10 @@
                 "bottom"
               ],
               "first": 0,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             },
             {
               "name": "Snowflake-GL",
@@ -38,7 +41,8 @@
                 "string"
               ],
               "first": 100,
-              "saved": false
+              "saved": false,
+              "lead": 0
             },
             {
               "name": "Window - GR",
@@ -50,13 +54,16 @@
                 17
               ],
               "sideNames": [
-                "left",
-                "top",
                 "right",
+                "top",
+                "left",
                 "bottom"
               ],
               "first": 148,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             },
             {
               "name": "Snowflake-GR",
@@ -68,7 +75,8 @@
                 "string"
               ],
               "first": 248,
-              "saved": false
+              "saved": false,
+              "lead": 0
             }
           ]
         },
@@ -80,37 +88,43 @@
               "name": "Window - LFR",
               "kind": "frame",
               "sides": [
-                17,
                 30,
                 17,
-                30
+                30,
+                17
               ],
               "sideNames": [
+                "right",
                 "top",
                 "left",
-                "bottom",
-                "right"
+                "bottom"
               ],
               "first": 0,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             },
             {
               "name": "Window - LNR",
               "kind": "frame",
               "sides": [
-                17,
                 30,
                 17,
-                30
+                30,
+                17
               ],
               "sideNames": [
+                "right",
                 "top",
                 "left",
-                "bottom",
-                "right"
+                "bottom"
               ],
               "first": 100,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             },
             {
               "name": "Front Door",
@@ -126,79 +140,94 @@
                 "left"
               ],
               "first": 200,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             },
             {
               "name": "Window - LNL",
               "kind": "frame",
               "sides": [
-                17,
                 30,
                 17,
-                30
+                30,
+                17
               ],
               "sideNames": [
+                "right",
                 "top",
                 "left",
-                "bottom",
-                "right"
+                "bottom"
               ],
               "first": 300,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             },
             {
               "name": "Window - LFL",
               "kind": "frame",
               "sides": [
-                17,
                 30,
                 17,
-                30
+                30,
+                17
               ],
               "sideNames": [
+                "right",
                 "top",
                 "left",
-                "bottom",
-                "right"
+                "bottom"
               ],
               "first": 400,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             },
             {
               "name": "Window - LYR",
               "kind": "frame",
               "sides": [
-                17,
                 30,
                 17,
-                30
+                30,
+                17
               ],
               "sideNames": [
+                "right",
                 "top",
                 "left",
-                "bottom",
-                "right"
+                "bottom"
               ],
               "first": 500,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             },
             {
               "name": "Window - LYL",
               "kind": "frame",
               "sides": [
-                17,
                 30,
                 17,
-                30
+                30,
+                17
               ],
               "sideNames": [
+                "right",
                 "top",
                 "left",
-                "bottom",
-                "right"
+                "bottom"
               ],
               "first": 600,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             }
           ]
         },
@@ -222,7 +251,10 @@
                 "bottom"
               ],
               "first": 0,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             },
             {
               "name": "Window - UNR",
@@ -240,7 +272,10 @@
                 "bottom"
               ],
               "first": 100,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             },
             {
               "name": "Window - UC",
@@ -258,7 +293,10 @@
                 "bottom"
               ],
               "first": 202,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             },
             {
               "name": "Window - UNL",
@@ -276,7 +314,10 @@
                 "bottom"
               ],
               "first": 300,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             },
             {
               "name": "Window - UFL",
@@ -294,7 +335,10 @@
                 "bottom"
               ],
               "first": 400,
-              "saved": false
+              "saved": false,
+              "corner": "br",
+              "dir": "ccw",
+              "lead": 0
             }
           ]
         }

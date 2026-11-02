@@ -65,3 +65,4 @@ body.measure { padding: 0 16px 3rem; max-width: 640px; margin: 0 auto; }
 .m-mismatch { font-size: 0.85rem; color: var(--warn); margin: 0 0 0.5rem; }
 .m-toggles { gap: 0.3rem 1rem; }
 .m-toggles .m-check { margin: 0; min-height: 36px; }
+.m-orient .m-field { flex: 1 1 140px; }

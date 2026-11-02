@@ -45,6 +45,23 @@
       <span id="itemSaved" class="m-badge"></span>
     </div>
 
+    <div id="orient" class="m-row m-orient">
+      <label class="m-field">String starts at
+        <select id="corner">
+          <option value="br">Bottom right</option>
+          <option value="bl">Bottom left</option>
+          <option value="tl">Top left</option>
+          <option value="tr">Top right</option>
+        </select>
+      </label>
+      <label class="m-field">and runs
+        <select id="dir">
+          <option value="ccw">Counter-clockwise</option>
+          <option value="cw">Clockwise</option>
+        </select>
+      </label>
+    </div>
+
     <ol id="steps" class="m-steps" aria-label="Steps for this model"></ol>
 
     <div class="m-step">
@@ -69,8 +86,8 @@
     </div>
 
     <dl class="m-facts">
-      <div><dt>Spare before</dt><dd id="nullBefore"></dd></div>
-      <div><dt>Spare after</dt><dd id="nullAfter"></dd></div>
+      <div><dt>Null before</dt><dd id="nullBefore"></dd></div>
+      <div><dt>Null after</dt><dd id="nullAfter"></dd></div>
       <div><dt>First pixel</dt><dd id="firstVal"></dd></div>
       <div><dt>Last pixel</dt><dd id="lastVal"></dd></div>
       <div class="m-wide"><dt>Sides</dt><dd id="sidesVal"></dd></div>

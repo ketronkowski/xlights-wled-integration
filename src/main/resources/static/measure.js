@@ -1,11 +1,13 @@
 // Boundary finder: light one port in measuring colors and walk each model step by step:
-// first find its start pixel (which also gives the spare pixels before it), then each
-// side's end corner in wiring order, then review the whole frame and save.
+// find its first frame pixel, then any spare (lead-in) pixels on its own string before
+// the frame, then each side's end corner in wiring order, then review and save.
 //
 // A plan is { controllers: [{ name, ip, ports: [{ port, label, items: [...] }] }] }.
-// Each item is { name, kind, sides: [counts in wiring order], sideNames, first, saved }.
-// "first" is the port-relative index of the item's first pixel; everything else
-// (last pixel, spare pixels before/after) is derived from first + sides.
+// Each item is { name, kind, sides: [counts in wiring order], sideNames, first, lead,
+// corner, dir, saved }. "first" is the port-relative index of the item's first frame
+// pixel; "lead" is how many spare pixels right before it belong to this model's string
+// (a null before it in xLights). For frames, corner (br/bl/tl/tr) and dir (ccw/cw) give
+// the wiring order of the sides, viewed from the front.
 
 const COLORS = {
   spare: 'FF2020',
@@ -16,6 +18,7 @@ const COLORS = {
   otherA: '0A4014',
   otherB: '0A3848',
   doneDim: '06202C',
+  spareDim: '300404',
 };
 const OFF = '000000';
 
@@ -23,13 +26,63 @@ const $ = (id) => document.getElementById(id);
 
 let plan = null;
 let sel = { c: 0, p: 0, i: 0 };
-let step = 0;         // 0 = start pixel, 1..n = side n, n+1 = review
+let step = 0;         // see STEP_* below; sides are SIDE0 .. SIDE0+n-1, then review
 let session = null;   // { ip, port, busLen } while lit
 let paintTimer = null;
 let painting = false;
 let paintAgain = false;
 let blinkTimer = null;
 let markerOn = true;
+
+// ── Steps ──────────────────────────────────────────────────────────────────
+
+const STEP_START = 0;
+const STEP_LEAD = 1;
+const SIDE0 = 2;
+const reviewStep = (it) => SIDE0 + it.sides.length;
+const sideOf = (it, st) => (st >= SIDE0 && st < reviewStep(it) ? st - SIDE0 : -1);
+
+// ── Orientation ────────────────────────────────────────────────────────────
+
+// Viewed from the front: counter-clockwise goes right side up, top leftwards, left side
+// down, bottom rightwards; clockwise is the reverse. The start corner picks the first side.
+const CYCLE = { ccw: ['right', 'top', 'left', 'bottom'], cw: ['right', 'bottom', 'left', 'top'] };
+const FIRST_SIDE = {
+  ccw: { br: 'right', tr: 'top', tl: 'left', bl: 'bottom' },
+  cw: { br: 'bottom', bl: 'left', tl: 'top', tr: 'right' },
+};
+const CORNERS = { br: 'Bottom right', bl: 'Bottom left', tl: 'Top left', tr: 'Top right' };
+const DIRS = { ccw: 'Counter-clockwise', cw: 'Clockwise' };
+
+function sideOrder(corner, dir) {
+  const cyc = CYCLE[dir];
+  const i = cyc.indexOf(FIRST_SIDE[dir][corner]);
+  return [...cyc.slice(i), ...cyc.slice(0, i)];
+}
+
+const isFrame = (it) => it.kind === 'frame' && Array.isArray(it.sideNames)
+  && it.sideNames.every((n) => CYCLE.ccw.includes(n));
+
+// Older plans only have sideNames; work out which corner/direction they describe.
+function inferOrientation(it) {
+  if (!isFrame(it) || (it.corner && it.dir)) return;
+  for (const dir of Object.keys(DIRS)) {
+    for (const corner of Object.keys(CORNERS)) {
+      const order = sideOrder(corner, dir).filter((n) => it.sideNames.includes(n));
+      if (order.join() === it.sideNames.join()) { it.corner = corner; it.dir = dir; return; }
+    }
+  }
+}
+
+// Re-order the sides for a new start corner/direction, keeping each side's count.
+function setOrientation(it, corner, dir) {
+  const counts = Object.fromEntries(it.sideNames.map((n, k) => [n, it.sides[k]]));
+  const order = sideOrder(corner, dir).filter((n) => n in counts);
+  it.sideNames = order;
+  it.sides = order.map((n) => counts[n]);
+  it.corner = corner;
+  it.dir = dir;
+}
 
 // ── Derived values ─────────────────────────────────────────────────────────
 
@@ -49,6 +102,18 @@ function gapAfter(items, idx, busLen) {
   return busLen == null ? null : busLen - endOf(items[idx]);
 }
 
+// Spare pixels on this model's own string before its frame. For the first model on a
+// port every pixel before it is its own lead-in.
+const leadOf = (items, idx) => (idx === 0 ? items[0].first : Math.min(items[idx].lead ?? 0, Math.max(0, gapBefore(items, idx))));
+
+// Spare pixels at the end of this model's string: the gap to the next model, minus the
+// next model's own lead-in.
+function tailOf(items, idx, busLen) {
+  const gap = gapAfter(items, idx, busLen);
+  if (gap == null || idx === items.length - 1) return gap;
+  return gap - leadOf(items, idx + 1);
+}
+
 // Ranges to paint for the whole port. Spare pixels (which become null models in
 // xLights) are red. The current model is lit according to the step you're on.
 //
@@ -60,35 +125,51 @@ function paintRanges(items, current, curStep, busLen, opts = {}) {
   const focus = !!opts.focus;
   const marker = opts.markerOn === false ? OFF : COLORS.marker;
   const total = busLen ?? Math.max(...items.map(endOf));
+  const cur = items[current];
+  const n = cur.sides.length;
+  const review = reviewStep(cur);
+  const k = sideOf(cur, curStep);
+  const spareFrom = current === 0 ? 0 : endOf(items[current - 1]);
+  const spareTo = current === items.length - 1 ? total : items[current + 1].first;
+  const lead = leadOf(items, current);
+  const leadFrom = cur.first - lead;
   const ranges = [];
-  if (focus) {
-    const cur = items[current];
-    const spareFrom = current === 0 ? 0 : endOf(items[current - 1]);
-    const spareTo = current === items.length - 1 ? total : items[current + 1].first;
-    const n = cur.sides.length;
-    // Spares before only while finding the start, spares after only from the last side
-    // on, so the corner where both meet never shows both at once (except in review).
-    if (curStep === 0 || curStep > n) ranges.push({ start: spareFrom, stop: cur.first, color: COLORS.spare });
-    if (curStep >= n) ranges.push({ start: endOf(cur), stop: spareTo, color: COLORS.spare });
-  } else {
-    ranges.push({ start: 0, stop: total, color: COLORS.spare });
+
+  if (!focus) ranges.push({ start: 0, stop: total, color: COLORS.spare });
+  // Spares before: the whole gap while finding the start; on the lead-in step the
+  // previous model's tail goes dim and this model's lead-in stays bright, with the
+  // marker on its first pixel. Spares after only show from the last side on, so the
+  // corner where the start, the end and dangling spares meet never shows both at once.
+  if (curStep === STEP_START || curStep === review) {
+    ranges.push({ start: spareFrom, stop: cur.first, color: COLORS.spare });
+  } else if (curStep === STEP_LEAD) {
+    ranges.push({ start: spareFrom, stop: leadFrom, color: COLORS.spareDim });
+    ranges.push({ start: leadFrom, stop: cur.first, color: COLORS.spare });
+    if (lead > 0) ranges.push({ start: leadFrom, stop: leadFrom + 1, color: marker });
+  } else if (!focus) {
+    ranges.push({ start: spareFrom, stop: cur.first, color: COLORS.spareDim });
   }
+  if (curStep >= review - 1 && curStep !== STEP_LEAD && curStep !== STEP_START) {
+    ranges.push({ start: endOf(cur), stop: spareTo, color: COLORS.spare });
+  } else if (!focus) {
+    ranges.push({ start: endOf(cur), stop: spareTo, color: COLORS.spareDim });
+  }
+
   items.forEach((it, idx) => {
     let pos = it.first;
-    const n = it.sides.length;
     it.sides.forEach((len, s) => {
       const stop = pos + len;
       if (idx !== current) {
         // In focus mode other models stay off (the port starts black).
         if (!focus) ranges.push({ start: pos, stop, color: s % 2 === 0 ? COLORS.otherA : COLORS.otherB });
-      } else if (curStep === 0) {
-        // Finding the start: the first side is lit, its first pixel is the marker.
-        const color = s === 0 ? (focus ? COLORS.active : COLORS.pending) : (focus ? null : COLORS.pending);
+      } else if (curStep === STEP_START || curStep === STEP_LEAD) {
+        // The first side is lit for reference; while finding the start its first pixel is
+        // the marker, while counting the lead-in it stays steady.
+        const color = s === 0 ? COLORS.active : (focus ? null : COLORS.pending);
         if (color) ranges.push({ start: pos, stop, color });
-        if (s === 0 && len > 0) ranges.push({ start: pos, stop: pos + 1, color: marker });
-      } else if (curStep <= n) {
-        // Finding the end of side (curStep - 1): its last pixel is the marker.
-        const k = curStep - 1;
+        if (s === 0 && len > 0 && curStep === STEP_START) ranges.push({ start: pos, stop: pos + 1, color: marker });
+      } else if (k >= 0) {
+        // Finding the end of side k: its last pixel is the marker.
         const color = s < k ? (focus ? COLORS.doneDim : COLORS.done)
           : s === k ? COLORS.active
           : (focus ? null : COLORS.pending);
@@ -118,6 +199,12 @@ function mismatches(it) {
   if (l != null && r != null && l !== r) out.push(`Left ${l} and right ${r} differ. xLights' Window Frame uses one side count, so this window needs a custom model or an adjusted submodel.`);
   if (t != null && b != null && t !== b) out.push(`Top ${t} and bottom ${b} differ. Window Frame has separate top and bottom counts, so set each one.`);
   return out;
+}
+
+// Compact form for the narrow results table: R29 T16 L29 B17.
+function sidesShort(it) {
+  if (!isFrame(it)) return it.sides.join('/');
+  return it.sides.map((n, s) => `${it.sideNames[s][0].toUpperCase()}${n}`).join(' ');
 }
 
 function sidesText(it) {
@@ -290,10 +377,20 @@ function changeSide(s, delta) {
   changed();
 }
 
+function changeLead(delta) {
+  const items = port().items;
+  if (sel.i === 0) return; // the first model's lead-in is simply its start pixel
+  const it = item();
+  it.lead = Math.min(Math.max(0, (it.lead ?? 0) + delta), Math.max(0, gapBefore(items, sel.i)));
+  changed();
+}
+
 // The single ± control does whatever the current step measures.
 function adjust(delta) {
-  if (step === 0) shiftStart(delta);
-  else if (step <= item().sides.length) changeSide(step - 1, delta);
+  const k = sideOf(item(), step);
+  if (step === STEP_START) shiftStart(delta);
+  else if (step === STEP_LEAD) changeLead(delta);
+  else if (k >= 0) changeSide(k, delta);
 }
 
 function changed() {
@@ -303,13 +400,13 @@ function changed() {
 
 function goToItem(idx) {
   sel.i = idx;
-  step = item().saved ? item().sides.length + 1 : 0;
+  step = item().saved ? reviewStep(item()) : STEP_START;
   changed();
 }
 
 async function next() {
   const it = item();
-  if (step <= it.sides.length) {
+  if (step < reviewStep(it)) {
     step += 1;
     changed();
     return;
@@ -323,7 +420,7 @@ async function next() {
 
 function back() {
   if (step > 0) step -= 1;
-  else if (sel.i > 0) { sel.i -= 1; step = item().sides.length + 1; }
+  else if (sel.i > 0) { sel.i -= 1; step = reviewStep(item()); }
   changed();
 }
 
@@ -358,38 +455,59 @@ function render() {
 
   const it = item();
   const n = it.sides.length;
-  if (step > n + 1) step = n + 1;
+  const review = reviewStep(it);
+  const k = sideOf(it, step);
+  const total = review + 1;
+  if (step > review) step = review;
   $('itemCard').hidden = false;
   $('itemName').textContent = it.name;
   $('itemSaved').textContent = it.saved ? 'saved' : '';
 
-  const names = ['Start', ...it.sides.map((_, s) => cap(it.sideNames?.[s] ?? `Side ${s + 1}`)), 'Review'];
+  // Start corner and direction, for window frames.
+  $('orient').hidden = !isFrame(it);
+  if (isFrame(it)) {
+    inferOrientation(it);
+    $('corner').value = it.corner ?? 'br';
+    $('dir').value = it.dir ?? 'ccw';
+  }
+
+  const names = ['Start', 'Lead-in', ...it.sides.map((_, s) => cap(it.sideNames?.[s] ?? `Side ${s + 1}`)), 'Review'];
   const stepsEl = $('steps');
   stepsEl.innerHTML = '';
-  names.forEach((label, k) => {
+  names.forEach((label, idx) => {
     const li = document.createElement('li');
     li.textContent = label;
-    li.className = k === step ? 'current' : (k < step || it.saved ? 'done' : '');
-    li.onclick = () => { step = k; changed(); };
+    li.className = idx === step ? 'current' : (idx < step || it.saved ? 'done' : '');
+    li.onclick = () => { step = idx; changed(); };
     stepsEl.appendChild(li);
   });
 
-  const adjustable = step <= n;
+  const adjustable = step < review && !(step === STEP_LEAD && sel.i === 0);
   document.querySelectorAll('[data-step]').forEach((b) => { b.disabled = !adjustable; });
-  if (step === 0) {
-    $('stepTitle').textContent = `Step 1 of ${n + 2}: find the first pixel`;
-    $('stepHelp').textContent = 'Move until the flashing pixel is the first one on the frame (where the string first touches it). Red pixels before it are spare.';
+  const lead = leadOf(items, sel.i);
+  if (step === STEP_START) {
+    $('stepTitle').textContent = `Step 1 of ${total}: find the first pixel on the frame`;
+    $('stepHelp').textContent = 'Move until the flashing pixel is the first one on the frame itself, at the start corner. Red pixels before it are spare.';
     $('stepLabel').innerHTML = `Start pixel <b>${it.first}</b>`;
-  } else if (adjustable) {
-    const name = it.sideNames?.[step - 1] ?? `side ${step}`;
-    $('stepTitle').textContent = `Step ${step + 1} of ${n + 2}: ${name}`;
+  } else if (step === STEP_LEAD) {
+    $('stepTitle').textContent = `Step 2 of ${total}: spare pixels before the frame`;
+    if (sel.i === 0) {
+      $('stepHelp').textContent = 'This is the first model on the port, so every red pixel before the frame is its lead-in. Nothing to adjust.';
+      $('stepLabel').innerHTML = `Lead-in spares <b>${lead}</b>`;
+    } else {
+      $('stepHelp').textContent = 'Bright red pixels are spares on this window\'s own string before the frame; the flashing one is the first. Dim red belongs to the previous model\'s tail. Usually 0: just tap Next.';
+      $('stepLabel').innerHTML = `Lead-in spares <b>${lead}</b>`;
+    }
+  } else if (k >= 0) {
+    const name = it.sideNames?.[k] ?? `side ${k + 1}`;
+    $('stepTitle').textContent = `Step ${step + 1} of ${total}: ${name}`;
     $('stepHelp').textContent = n === 1
       ? 'Move until the flashing pixel is the last one on the model.'
       : `Move until the flashing pixel sits on the corner where the ${name} ends. Blue is already measured.`;
-    $('stepLabel').innerHTML = `${cap(name)} pixels <b>${it.sides[step - 1]}</b>`;
+    $('stepLabel').innerHTML = `${cap(name)} pixels <b>${it.sides[k]}</b>`;
   } else {
-    $('stepTitle').textContent = `Step ${n + 2} of ${n + 2}: check and save`;
-    const tail = gapAfter(items, sel.i, busLen);
+    $('stepTitle').textContent = `Step ${total} of ${total}: check and save`;
+    const tail = tailOf(items, sel.i, busLen);
     $('stepHelp').textContent = 'Each side alternates green and blue, with a white pixel at each corner. '
       + (tail == null ? 'Red after the frame is spare.' : `Red after the frame is spare: count the red pixels hanging off the end, there should be ${tail}.`);
     $('stepLabel').textContent = '';
@@ -402,14 +520,14 @@ function render() {
   $('sidesVal').textContent = `${sidesText(it)} (${lengthOf(it)} total)`;
 
   const before = gapBefore(items, sel.i);
-  const after = gapAfter(items, sel.i, busLen);
-  $('nullBefore').textContent = before;
+  const after = tailOf(items, sel.i, busLen);
+  $('nullBefore').textContent = lead;
   $('nullBefore').classList.toggle('warn', before < 0);
   $('nullAfter').textContent = after == null ? '\u2014' : after;
   $('nullAfter').classList.toggle('warn', after != null && after < 0);
 
   const mm = mismatches(it);
-  $('mismatch').hidden = mm.length === 0 || step <= 0;
+  $('mismatch').hidden = mm.length === 0 || k < 0 && step !== review;
   $('mismatch').textContent = mm.join(' ');
 
   renderResults();
@@ -422,10 +540,12 @@ function resultRows() {
       name: it.name,
       first: it.first,
       sides: sidesText(it),
+      sidesShort: sidesShort(it),
       mismatch: mismatches(it).length > 0,
       length: lengthOf(it),
-      after: gapAfter(p.items, idx, null),
-      before: idx === 0 ? it.first : null,
+      after: tailOf(p.items, idx, null),
+      before: leadOf(p.items, idx),
+      orient: isFrame(it) && it.corner ? `${CORNERS[it.corner]}, ${DIRS[it.dir].toLowerCase()}` : '',
       saved: it.saved,
     })),
   })));
@@ -439,12 +559,12 @@ function renderResults() {
     h.textContent = g.title;
     el.appendChild(h);
     const t = document.createElement('table');
-    t.innerHTML = '<tr><th>Model</th><th>First</th><th>Sides</th><th>Len</th><th>Null after</th><th></th></tr>';
+    t.innerHTML = '<tr><th>Model</th><th>First</th><th>Sides</th><th>Len</th><th>Null before</th><th>Null after</th><th></th></tr>';
     g.rows.forEach((r) => {
       const tr = document.createElement('tr');
       const after = r.after == null ? 'end' : r.after;
-      tr.innerHTML = `<td>${r.name.replace(/^Window - /, '')}</td><td>${r.first}</td><td>${r.sides}</td>
-        <td>${r.length}</td><td class="${r.after < 0 ? 'warn' : ''}">${after}</td><td>${r.saved ? '✓' : ''}${r.mismatch ? ' <span class="warn">≠</span>' : ''}</td>`;
+      tr.innerHTML = `<td>${r.name.replace(/^Window - /, '')}</td><td>${r.first}</td><td>${r.sidesShort}</td>
+        <td>${r.length}</td><td>${r.before}</td><td class="${r.after < 0 ? 'warn' : ''}">${after}</td><td>${r.saved ? '✓' : ''}${r.mismatch ? ' <span class="warn">≠</span>' : ''}</td>`;
       t.appendChild(tr);
     });
     el.appendChild(t);
@@ -452,10 +572,10 @@ function renderResults() {
 }
 
 function markdownTable() {
-  const lines = ['| Port | Model | First px | Sides (wiring order) | Length | Null before | Null after | Sides unequal | Saved |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- |'];
+  const lines = ['| Port | Model | Starts / runs | First px | Sides (wiring order) | Length | Null before | Null after | Sides unequal | Saved |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'];
   resultRows().forEach((g) => g.rows.forEach((r) => {
-    lines.push(`| ${g.title} | ${r.name} | ${r.first} | ${r.sides} | ${r.length} | ${r.before ?? ''} | ${r.after ?? 'end of string'} | ${r.mismatch ? 'yes' : ''} | ${r.saved ? 'yes' : 'no'} |`);
+    lines.push(`| ${g.title} | ${r.name} | ${r.orient} | ${r.first} | ${r.sides} | ${r.length} | ${r.before} | ${r.after ?? 'end of string'} | ${r.mismatch ? 'yes' : ''} | ${r.saved ? 'yes' : 'no'} |`);
   }));
   return lines.join('\n');
 }
@@ -464,6 +584,7 @@ function markdownTable() {
 
 async function init() {
   plan = await api('plan');
+  plan.controllers.forEach((c) => c.ports.forEach((p) => p.items.forEach(inferOrientation)));
   renderPortSelect();
   render();
 
@@ -472,7 +593,7 @@ async function init() {
     const wasLit = !!session;
     if (wasLit) await stopSession();
     sel = { c, p, i: 0 };
-    step = item().saved ? item().sides.length + 1 : 0;
+    step = item().saved ? reviewStep(item()) : STEP_START;
     render();
     if (wasLit) startSession();
   };
@@ -485,6 +606,13 @@ async function init() {
     b.onclick = () => adjust(Number(b.dataset.step));
   });
   $('backBtn').onclick = back;
+  const reorient = () => {
+    setOrientation(item(), $('corner').value, $('dir').value);
+    step = STEP_START;
+    changed();
+  };
+  $('corner').onchange = reorient;
+  $('dir').onchange = reorient;
   $('nextBtn').onclick = next;
   $('copyBtn').onclick = async () => {
     try {

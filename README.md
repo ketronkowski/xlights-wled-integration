@@ -101,11 +101,16 @@ flowchart LR
 
 Window outlines and other chained props usually have a few spare pixels per string that need a null model in xLights. Counting them by eye is tedious, so the boundary finder lights one port from your phone while you stand in the yard:
 
-Each model is measured in steps, one thing at a time (red is always spare pixels, which become null models):
+For a window frame, first pick where its string **starts** (bottom right, bottom left, top left or top right) and which way it **runs** (counter-clockwise or clockwise, seen from the front). That sets the order of the sides; each side's count is kept when you change it. Windows default to bottom right, counter-clockwise.
 
-1. **Start**: move the white marker onto the first pixel of the frame. The red before it is the null before this model.
-2. **Each side, in wiring order** (for example right, top, left, bottom): the side being measured is green with a white marker on its last pixel. Move it until the marker sits on that corner. Sides already measured are blue.
-3. **Review**: the whole frame alternates green and blue with a white pixel at each corner. Red after it is the null after this model. **Save & next model** stores it and moves on.
+Each model is then measured in steps, one thing at a time (red is always spare pixels, which become null models):
+
+1. **Start**: move the flashing marker onto the first pixel of the frame itself.
+2. **Lead-in**: if this model's own string has spare pixels before the frame, count them here. They are bright red with the first one flashing; dim red is the previous model's tail. Usually 0. On the first model of a port, everything before the frame is its lead-in.
+3. **Each side, in wiring order**: the side being measured is green with the marker on its last pixel. Move it until the marker sits on that corner. Sides already measured are blue.
+4. **Review**: the whole frame alternates green and blue with the marker at each corner. Red after it is this model's tail. **Save & next model** stores it and moves on.
+
+The results give each model a null **before** (its lead-in) and **after** (its tail), so the gap between two windows is split correctly between them. Left and right, and top and bottom, are measured separately because they don't always match; the page flags unequal pairs, since xLights' Window Frame model has a single count for both sides. Unsaved models later on the string move along with each change, and the results copy out as a Markdown table.
 
 The marker flashes about once a second so a single pixel is easy to spot from the street. **Light only what I'm measuring** (on by default) turns everything else off: the start step shows only the spares before the model and its first side, and the spares after it only appear from the last side on. That keeps a corner where the string starts, ends and has spare pixels dangling (bottom right, on most of these windows) readable.
 
