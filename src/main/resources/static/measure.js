@@ -381,7 +381,17 @@ function changeLead(delta) {
   const items = port().items;
   if (sel.i === 0) return; // the first model's lead-in is simply its start pixel
   const it = item();
-  it.lead = Math.min(Math.max(0, (it.lead ?? 0) + delta), Math.max(0, gapBefore(items, sel.i)));
+  const want = Math.max(0, leadOf(items, sel.i) + delta);
+  // If the previous model ends right where this frame starts there is no room for a
+  // lead-in, so growing it pushes this model (and, with ripple on, the unsaved ones
+  // after it) further along the string to make room.
+  const room = Math.max(0, gapBefore(items, sel.i));
+  if (want > room) {
+    const d = want - room;
+    it.first += d;
+    ripple(d);
+  }
+  it.lead = want;
   changed();
 }
 
@@ -495,7 +505,7 @@ function render() {
       $('stepHelp').textContent = 'This is the first model on the port, so every red pixel before the frame is its lead-in. Nothing to adjust.';
       $('stepLabel').innerHTML = `Lead-in spares <b>${lead}</b>`;
     } else {
-      $('stepHelp').textContent = 'Bright red pixels are spares on this window\'s own string before the frame; the flashing one is the first. Dim red belongs to the previous model\'s tail. Usually 0: just tap Next.';
+      $('stepHelp').textContent = 'Bright red pixels are spares on this window\'s own string before the frame; the flashing one is the first. Dim red belongs to the previous model\'s tail. Usually 0: just tap Next. Tapping + past the dim red moves this whole frame along to make room.';
       $('stepLabel').innerHTML = `Lead-in spares <b>${lead}</b>`;
     }
   } else if (k >= 0) {
