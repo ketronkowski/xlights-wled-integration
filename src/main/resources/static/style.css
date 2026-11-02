@@ -548,3 +548,6 @@ button.list-sort-btn:hover:not(:disabled) { color: var(--text-dim); background: 
   justify-content: flex-end;
   gap: 0.6rem;
 }
+
+.tagline-link { color: var(--accent); text-decoration: none; }
+.tagline-link:hover { text-decoration: underline; }

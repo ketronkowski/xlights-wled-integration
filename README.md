@@ -77,6 +77,7 @@ flowchart LR
 | `web` | REST controllers: upload, validate/fix, backups |
 | `domain` | Plain data classes shared across the above |
 | `system` | Orchestrates the destructive "Clear All Controllers" reset (`SystemResetService`) |
+| `measure` | Boundary finder: lights a port in measuring colors and stores the measured plan (`MeasureService`) |
 
 ### REST API
 
@@ -90,7 +91,23 @@ flowchart LR
 | `GET` | `/api/backups` | List backups (optionally `?controller=Octa1`) |
 | `POST` | `/api/backups/{controller}` | Manual backup-now |
 | `POST` | `/api/backups/{controller}/restore/{timestamp}` | Restore a backup and reboot the device |
+| `POST` | `/api/measure/start` | Boundary finder: take over one port (`lor: 2`, measuring brightness) |
+| `POST` | `/api/measure/paint` | Set that port's pixels from port-relative color ranges (`seg.i`) |
+| `POST` | `/api/measure/stop` | Unfreeze the segment, restore brightness, accept live data again |
+| `GET` / `PUT` / `DELETE` | `/api/measure/plan` | Read, save, or reset to default the measuring plan and results |
 | `POST` | `/api/system/reset` | Factory reset: every reachable WLED device to hardware-default segments + delete all backups and the uploaded config (no backup taken first) |
+
+### Boundary finder (`/measure.html`)
+
+Window outlines and other chained props usually have a few spare pixels per string that need a null model in xLights. Counting them by eye is tedious, so the boundary finder lights one port from your phone while you stand in the yard:
+
+- **red** = spare pixels (not on any model), **green/cyan** = the selected model's sides, **white** = the first pixel of each side, dim colors = the other models on the port.
+- Nudge the start pixel and each side count until the colors sit exactly on the frame, then **Save & next**. Unsaved models later on the string move along with each change.
+- The results table gives each model's first pixel, side counts and the null size after it, and copies as Markdown.
+
+While it's lit the controller ignores live DDP data (`lor: 2`), so stop FPP playback first. **Done (restore)** unfreezes the segment, restores the brightness and turns live data back on; leaving the page does the same, and a reboot always does. Nothing is written to the controller's config or presets. The port must be covered by a single WLED segment.
+
+The starting plan (`src/main/resources/measure/default-plan.json`) holds the 2026 window mapping on Octa6; saved measurements live in `/data/measure/plan.json`.
 
 ## Running locally
 

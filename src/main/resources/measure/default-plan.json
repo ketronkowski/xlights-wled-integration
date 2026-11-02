@@ -1,0 +1,304 @@
+{
+  "version": 1,
+  "note": "Starting guesses come from the current xLights layout, which still has the windows on Octa2. 'first' is the port-relative index of the first pixel on the model; 'sides' are pixel counts in wiring order.",
+  "controllers": [
+    {
+      "name": "Octa6",
+      "ip": "192.168.1.188",
+      "ports": [
+        {
+          "port": 1,
+          "label": "Garage windows and stars",
+          "items": [
+            {
+              "name": "Window - GL",
+              "kind": "frame",
+              "sides": [
+                29,
+                17,
+                29,
+                17
+              ],
+              "sideNames": [
+                "right",
+                "top",
+                "left",
+                "bottom"
+              ],
+              "first": 0,
+              "saved": false
+            },
+            {
+              "name": "Snowflake-GL",
+              "kind": "line",
+              "sides": [
+                48
+              ],
+              "sideNames": [
+                "string"
+              ],
+              "first": 100,
+              "saved": false
+            },
+            {
+              "name": "Window - GR",
+              "kind": "frame",
+              "sides": [
+                29,
+                17,
+                29,
+                17
+              ],
+              "sideNames": [
+                "left",
+                "top",
+                "right",
+                "bottom"
+              ],
+              "first": 148,
+              "saved": false
+            },
+            {
+              "name": "Snowflake-GR",
+              "kind": "line",
+              "sides": [
+                48
+              ],
+              "sideNames": [
+                "string"
+              ],
+              "first": 248,
+              "saved": false
+            }
+          ]
+        },
+        {
+          "port": 2,
+          "label": "Farmer's porch, front door and family room windows",
+          "items": [
+            {
+              "name": "Window - LFR",
+              "kind": "frame",
+              "sides": [
+                17,
+                30,
+                17,
+                30
+              ],
+              "sideNames": [
+                "top",
+                "left",
+                "bottom",
+                "right"
+              ],
+              "first": 0,
+              "saved": false
+            },
+            {
+              "name": "Window - LNR",
+              "kind": "frame",
+              "sides": [
+                17,
+                30,
+                17,
+                30
+              ],
+              "sideNames": [
+                "top",
+                "left",
+                "bottom",
+                "right"
+              ],
+              "first": 100,
+              "saved": false
+            },
+            {
+              "name": "Front Door",
+              "kind": "frame",
+              "sides": [
+                21,
+                19,
+                21
+              ],
+              "sideNames": [
+                "right",
+                "top",
+                "left"
+              ],
+              "first": 200,
+              "saved": false
+            },
+            {
+              "name": "Window - LNL",
+              "kind": "frame",
+              "sides": [
+                17,
+                30,
+                17,
+                30
+              ],
+              "sideNames": [
+                "top",
+                "left",
+                "bottom",
+                "right"
+              ],
+              "first": 300,
+              "saved": false
+            },
+            {
+              "name": "Window - LFL",
+              "kind": "frame",
+              "sides": [
+                17,
+                30,
+                17,
+                30
+              ],
+              "sideNames": [
+                "top",
+                "left",
+                "bottom",
+                "right"
+              ],
+              "first": 400,
+              "saved": false
+            },
+            {
+              "name": "Window - LYR",
+              "kind": "frame",
+              "sides": [
+                17,
+                30,
+                17,
+                30
+              ],
+              "sideNames": [
+                "top",
+                "left",
+                "bottom",
+                "right"
+              ],
+              "first": 500,
+              "saved": false
+            },
+            {
+              "name": "Window - LYL",
+              "kind": "frame",
+              "sides": [
+                17,
+                30,
+                17,
+                30
+              ],
+              "sideNames": [
+                "top",
+                "left",
+                "bottom",
+                "right"
+              ],
+              "first": 600,
+              "saved": false
+            }
+          ]
+        },
+        {
+          "port": 3,
+          "label": "Second floor windows",
+          "items": [
+            {
+              "name": "Window - UFR",
+              "kind": "frame",
+              "sides": [
+                29,
+                16,
+                29,
+                17
+              ],
+              "sideNames": [
+                "right",
+                "top",
+                "left",
+                "bottom"
+              ],
+              "first": 0,
+              "saved": false
+            },
+            {
+              "name": "Window - UNR",
+              "kind": "frame",
+              "sides": [
+                29,
+                16,
+                29,
+                17
+              ],
+              "sideNames": [
+                "right",
+                "top",
+                "left",
+                "bottom"
+              ],
+              "first": 100,
+              "saved": false
+            },
+            {
+              "name": "Window - UC",
+              "kind": "frame",
+              "sides": [
+                29,
+                17,
+                29,
+                17
+              ],
+              "sideNames": [
+                "right",
+                "top",
+                "left",
+                "bottom"
+              ],
+              "first": 202,
+              "saved": false
+            },
+            {
+              "name": "Window - UNL",
+              "kind": "frame",
+              "sides": [
+                29,
+                16,
+                29,
+                17
+              ],
+              "sideNames": [
+                "right",
+                "top",
+                "left",
+                "bottom"
+              ],
+              "first": 300,
+              "saved": false
+            },
+            {
+              "name": "Window - UFL",
+              "kind": "frame",
+              "sides": [
+                29,
+                16,
+                29,
+                17
+              ],
+              "sideNames": [
+                "right",
+                "top",
+                "left",
+                "bottom"
+              ],
+              "first": 400,
+              "saved": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
