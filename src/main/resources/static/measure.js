@@ -379,7 +379,8 @@ function changeSide(s, delta) {
 
 function changeLead(delta) {
   const items = port().items;
-  if (sel.i === 0) return; // the first model's lead-in is simply its start pixel
+  // The first model's lead-in is every pixel before its frame, so changing it moves the start.
+  if (sel.i === 0) { shiftStart(delta); return; }
   const it = item();
   const want = Math.max(0, leadOf(items, sel.i) + delta);
   // If the previous model ends right where this frame starts there is no room for a
@@ -492,7 +493,7 @@ function render() {
     stepsEl.appendChild(li);
   });
 
-  const adjustable = step < review && !(step === STEP_LEAD && sel.i === 0);
+  const adjustable = step < review;
   document.querySelectorAll('[data-step]').forEach((b) => { b.disabled = !adjustable; });
   const lead = leadOf(items, sel.i);
   if (step === STEP_START) {
@@ -502,7 +503,7 @@ function render() {
   } else if (step === STEP_LEAD) {
     $('stepTitle').textContent = `Step 2 of ${total}: spare pixels before the frame`;
     if (sel.i === 0) {
-      $('stepHelp').textContent = 'This is the first model on the port, so every red pixel before the frame is its lead-in. Nothing to adjust.';
+      $('stepHelp').textContent = 'This is the first model on the port, so every red pixel before the frame is its lead-in. Changing it moves the frame start (and, with ripple on, the unsaved models after it).';
       $('stepLabel').innerHTML = `Lead-in spares <b>${lead}</b>`;
     } else {
       $('stepHelp').textContent = 'Bright red pixels are spares on this window\'s own string before the frame; the flashing one is the first. Dim red belongs to the previous model\'s tail. Usually 0: just tap Next. Tapping + past the dim red moves this whole frame along to make room.';
