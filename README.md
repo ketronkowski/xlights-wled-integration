@@ -106,11 +106,12 @@ For a window frame, first pick where its string **starts** (bottom right, bottom
 Each model is then measured in steps, one thing at a time (red is always spare pixels, which become null models):
 
 1. **Start**: move the flashing marker onto the first pixel of the frame itself.
-2. **Lead-in**: if this model's own string has spare pixels before the frame, count them here. They are bright red with the first one flashing; dim red is the previous model's tail. Usually 0. On the first model of a port, everything before the frame is its lead-in.
+2. **Pre-null**: if this model's own string has spare pixels before the frame, count them here. They are bright red with the first one flashing; dim red is the previous model's post-null. Usually 0. On the first model of a port, everything before the frame is its pre-null.
 3. **Each side, in wiring order**: the side being measured is green with the marker on its last pixel. Move it until the marker sits on that corner. Sides already measured are blue.
-4. **Review**: the whole frame alternates green and blue with the marker at each corner. Red after it is this model's tail. **Save & next model** stores it and moves on.
+4. **Post-null**: the spare pixels at the end of this model's own string are bright red, with the last one flashing; dim red is the next model's pre-null. Changing it moves the next model along. On the last model of a port, everything after the frame is its post-null.
+5. **Review**: the whole frame alternates green and blue with the marker at each corner. **Save & next model** stores it and moves on.
 
-The results give each model a null **before** (its lead-in) and **after** (its tail), so the gap between two windows is split correctly between them. Left and right, and top and bottom, are measured separately because they don't always match; the page flags unequal pairs, since xLights' Window Frame model has a single count for both sides. Unsaved models later on the string move along with each change, and the results copy out as a Markdown table.
+The results give each model a **pre-null** (spares before the frame) and a **post-null** (spares after it), so the gap between two windows is split correctly between them. Left and right, and top and bottom, are measured separately because they don't always match; the page flags unequal pairs, since xLights' Window Frame model has a single count for both sides. Unsaved models later on the string move along with each change, and the results copy out as a Markdown table.
 
 The marker flashes about once a second so a single pixel is easy to spot from the street. **Light only what I'm measuring** (on by default) turns everything else off: the start step shows only the spares before the model and its first side, and the spares after it only appear from the last side on. That keeps a corner where the string starts, ends and has spare pixels dangling (bottom right, on most of these windows) readable.
 

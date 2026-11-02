@@ -1,5 +1,5 @@
 // Boundary finder: light one port in measuring colors and walk each model step by step:
-// find its first frame pixel, then any spare (lead-in) pixels on its own string before
+// find its first frame pixel, then any spare (pre-null) pixels on its own string before
 // the frame, then each side's end corner in wiring order, then review and save.
 //
 // A plan is { controllers: [{ name, ip, ports: [{ port, label, items: [...] }] }] }.
@@ -39,8 +39,9 @@ let markerOn = true;
 const STEP_START = 0;
 const STEP_LEAD = 1;
 const SIDE0 = 2;
-const reviewStep = (it) => SIDE0 + it.sides.length;
-const sideOf = (it, st) => (st >= SIDE0 && st < reviewStep(it) ? st - SIDE0 : -1);
+const postStep = (it) => SIDE0 + it.sides.length;   // spares after the frame
+const reviewStep = (it) => postStep(it) + 1;
+const sideOf = (it, st) => (st >= SIDE0 && st < postStep(it) ? st - SIDE0 : -1);
 
 // ── Orientation ────────────────────────────────────────────────────────────
 
@@ -149,7 +150,16 @@ function paintRanges(items, current, curStep, busLen, opts = {}) {
   } else if (!focus) {
     ranges.push({ start: spareFrom, stop: cur.first, color: COLORS.spareDim });
   }
-  if (curStep >= review - 1 && curStep !== STEP_LEAD && curStep !== STEP_START) {
+  const post = postStep(cur);
+  if (curStep === post && current < items.length - 1) {
+    // Post-null step: this model's own spares are bright, with the marker on the last
+    // one; the next model's pre-null is dim.
+    const tail = tailOf(items, current, busLen);
+    const tailEnd = endOf(cur) + Math.max(0, tail);
+    ranges.push({ start: endOf(cur), stop: tailEnd, color: COLORS.spare });
+    ranges.push({ start: tailEnd, stop: spareTo, color: COLORS.spareDim });
+    if (tail > 0) ranges.push({ start: tailEnd - 1, stop: tailEnd, color: marker });
+  } else if (curStep >= post - 1 && curStep !== STEP_LEAD && curStep !== STEP_START) {
     ranges.push({ start: endOf(cur), stop: spareTo, color: COLORS.spare });
   } else if (!focus) {
     ranges.push({ start: endOf(cur), stop: spareTo, color: COLORS.spareDim });
@@ -175,6 +185,8 @@ function paintRanges(items, current, curStep, busLen, opts = {}) {
           : (focus ? null : COLORS.pending);
         if (color) ranges.push({ start: pos, stop, color });
         if (s === k && len > 0) ranges.push({ start: stop - 1, stop, color: marker });
+      } else if (curStep === post) {
+        ranges.push({ start: pos, stop, color: focus ? COLORS.doneDim : COLORS.done });
       } else {
         // Review: sides alternate colors, first pixel of each side is the marker.
         ranges.push({ start: pos, stop, color: s % 2 === 0 ? COLORS.active : COLORS.done });
@@ -396,11 +408,34 @@ function changeLead(delta) {
   changed();
 }
 
+// Spare pixels at the end of this model's string. Growing them moves the next model
+// along (and, with ripple on, the unsaved ones after it). If the next model is already
+// saved, the spares come out of its pre-null instead, so it stays where it was measured.
+function changePost(delta) {
+  const items = port().items;
+  const i = sel.i;
+  if (i === items.length - 1) return; // the last model's spares run to the end of the port
+  const tail = tailOf(items, i, session?.busLen ?? null);
+  const want = Math.max(0, tail + delta);
+  const nxt = items[i + 1];
+  if (nxt.saved) {
+    const pre = leadOf(items, i + 1);
+    const d = Math.min(want - tail, pre);
+    nxt.lead = pre - d;
+  } else {
+    const d = want - tail;
+    nxt.first += d;
+    if ($('ripple').checked) items.slice(i + 2).forEach((it) => { if (!it.saved) it.first += d; });
+  }
+  changed();
+}
+
 // The single ± control does whatever the current step measures.
 function adjust(delta) {
   const k = sideOf(item(), step);
   if (step === STEP_START) shiftStart(delta);
   else if (step === STEP_LEAD) changeLead(delta);
+  else if (step === postStep(item())) changePost(delta);
   else if (k >= 0) changeSide(k, delta);
 }
 
@@ -482,7 +517,7 @@ function render() {
     $('dir').value = it.dir ?? 'ccw';
   }
 
-  const names = ['Start', 'Lead-in', ...it.sides.map((_, s) => cap(it.sideNames?.[s] ?? `Side ${s + 1}`)), 'Review'];
+  const names = ['Start', 'Pre-null', ...it.sides.map((_, s) => cap(it.sideNames?.[s] ?? `Side ${s + 1}`)), 'Post-null', 'Review'];
   const stepsEl = $('steps');
   stepsEl.innerHTML = '';
   names.forEach((label, idx) => {
@@ -493,7 +528,8 @@ function render() {
     stepsEl.appendChild(li);
   });
 
-  const adjustable = step < review;
+  const lastOnPort = sel.i === items.length - 1;
+  const adjustable = step < review && !(step === postStep(it) && lastOnPort);
   document.querySelectorAll('[data-step]').forEach((b) => { b.disabled = !adjustable; });
   const lead = leadOf(items, sel.i);
   if (step === STEP_START) {
@@ -501,13 +537,13 @@ function render() {
     $('stepHelp').textContent = 'Move until the flashing pixel is the first one on the frame itself, at the start corner. Red pixels before it are spare.';
     $('stepLabel').innerHTML = `Start pixel <b>${it.first}</b>`;
   } else if (step === STEP_LEAD) {
-    $('stepTitle').textContent = `Step 2 of ${total}: spare pixels before the frame`;
+    $('stepTitle').textContent = `Step 2 of ${total}: spare pixels before the frame (pre-null)`;
     if (sel.i === 0) {
-      $('stepHelp').textContent = 'This is the first model on the port, so every red pixel before the frame is its lead-in. Changing it moves the frame start (and, with ripple on, the unsaved models after it).';
-      $('stepLabel').innerHTML = `Lead-in spares <b>${lead}</b>`;
+      $('stepHelp').textContent = 'This is the first model on the port, so every red pixel before the frame is its pre-null. Changing it moves the frame start (and, with ripple on, the unsaved models after it).';
+      $('stepLabel').innerHTML = `Pre-null pixels <b>${lead}</b>`;
     } else {
       $('stepHelp').textContent = 'Bright red pixels are spares on this window\'s own string before the frame; the flashing one is the first. Dim red belongs to the previous model\'s tail. Usually 0: just tap Next. Tapping + past the dim red moves this whole frame along to make room.';
-      $('stepLabel').innerHTML = `Lead-in spares <b>${lead}</b>`;
+      $('stepLabel').innerHTML = `Pre-null pixels <b>${lead}</b>`;
     }
   } else if (k >= 0) {
     const name = it.sideNames?.[k] ?? `side ${k + 1}`;
@@ -516,6 +552,13 @@ function render() {
       ? 'Move until the flashing pixel is the last one on the model.'
       : `Move until the flashing pixel sits on the corner where the ${name} ends. Blue is already measured.`;
     $('stepLabel').innerHTML = `${cap(name)} pixels <b>${it.sides[k]}</b>`;
+  } else if (step === postStep(it)) {
+    const tail = tailOf(items, sel.i, busLen);
+    $('stepTitle').textContent = `Step ${step + 1} of ${total}: spare pixels after the frame`;
+    $('stepHelp').textContent = lastOnPort
+      ? 'This is the last model on the port, so every red pixel after the frame is its post-null. Nothing to adjust.'
+      : 'Bright red pixels are spares at the end of this window\'s own string; the flashing one is the last. Dim red is the next model\'s pre-null. Changing it moves the next model along.';
+    $('stepLabel').innerHTML = `Post-null pixels <b>${tail ?? '\u2014'}</b>`;
   } else {
     $('stepTitle').textContent = `Step ${total} of ${total}: check and save`;
     const tail = tailOf(items, sel.i, busLen);
@@ -570,7 +613,7 @@ function renderResults() {
     h.textContent = g.title;
     el.appendChild(h);
     const t = document.createElement('table');
-    t.innerHTML = '<tr><th>Model</th><th>First</th><th>Sides</th><th>Len</th><th>Null before</th><th>Null after</th><th></th></tr>';
+    t.innerHTML = '<tr><th>Model</th><th>First</th><th>Sides</th><th>Len</th><th>Pre-null</th><th>Post-null</th><th></th></tr>';
     g.rows.forEach((r) => {
       const tr = document.createElement('tr');
       const after = r.after == null ? 'end' : r.after;
@@ -583,7 +626,7 @@ function renderResults() {
 }
 
 function markdownTable() {
-  const lines = ['| Port | Model | Starts / runs | First px | Sides (wiring order) | Length | Null before | Null after | Sides unequal | Saved |',
+  const lines = ['| Port | Model | Starts / runs | First px | Sides (wiring order) | Length | Pre-null | Post-null | Sides unequal | Saved |',
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'];
   resultRows().forEach((g) => g.rows.forEach((r) => {
     lines.push(`| ${g.title} | ${r.name} | ${r.orient} | ${r.first} | ${r.sides} | ${r.length} | ${r.before} | ${r.after ?? 'end of string'} | ${r.mismatch ? 'yes' : ''} | ${r.saved ? 'yes' : 'no'} |`);
