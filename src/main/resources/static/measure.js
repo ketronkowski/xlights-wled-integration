@@ -132,7 +132,15 @@ async function api(path, opts = {}) {
     ...opts,
   });
   const text = await res.text();
-  const body = text ? JSON.parse(text) : null;
+  let body = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    // Not JSON: usually the ingress answering because the app is restarting.
+    throw new Error(res.ok
+      ? 'Unexpected reply from the app; reload the page.'
+      : `The app isn't answering (HTTP ${res.status}: ${text.trim().slice(0, 60)}). It may be restarting; try again in a minute.`);
+  }
   if (!res.ok) throw new Error(body?.error || `HTTP ${res.status}`);
   return body;
 }
