@@ -52,3 +52,14 @@ body.measure { padding: 0 16px 3rem; max-width: 640px; margin: 0 auto; }
 #results th { color: var(--text-dim); font-weight: 500; }
 #results h3 { font-size: 0.95rem; margin: 0.8rem 0 0.3rem; }
 #results .warn { color: var(--err); }
+
+.m-steps { display: flex; gap: 0.3rem; list-style: none; padding: 0; margin: 0.6rem 0; flex-wrap: wrap; }
+.m-steps li { font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text-dim); cursor: pointer; }
+.m-steps li.done { border-color: color-mix(in srgb, var(--ok) 55%, var(--border-strong)); color: var(--ok); }
+.m-steps li.current { border-color: var(--accent); color: var(--accent); }
+.m-step { border-top: 1px solid var(--border); padding-top: 0.5rem; }
+.m-step-title { font-size: 1.05rem; margin: 0.2rem 0; }
+.m-step-help { font-size: 0.85rem; color: var(--text-dim); margin: 0 0 0.3rem; }
+.m-facts .m-wide { grid-column: 1 / -1; gap: 0.75rem; }
+.m-facts .m-wide dd { text-align: right; font-size: 0.85rem; }
+.m-mismatch { font-size: 0.85rem; color: var(--warn); margin: 0 0 0.5rem; }

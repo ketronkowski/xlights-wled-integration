@@ -101,9 +101,13 @@ flowchart LR
 
 Window outlines and other chained props usually have a few spare pixels per string that need a null model in xLights. Counting them by eye is tedious, so the boundary finder lights one port from your phone while you stand in the yard:
 
-- **red** = spare pixels (not on any model), **green/cyan** = the selected model's sides, **white** = the first pixel of each side, dim colors = the other models on the port.
-- Nudge the start pixel and each side count until the colors sit exactly on the frame, then **Save & next**. Unsaved models later on the string move along with each change.
-- The results table gives each model's first pixel, side counts and the null size after it, and copies as Markdown.
+Each model is measured in steps, one thing at a time (red is always spare pixels, which become null models):
+
+1. **Start**: move the white marker onto the first pixel of the frame. The red before it is the null before this model.
+2. **Each side, in wiring order** (for example right, top, left, bottom): the side being measured is green with a white marker on its last pixel. Move it until the marker sits on that corner. Sides already measured are blue.
+3. **Review**: the whole frame alternates green and blue with a white pixel at each corner. Red after it is the null after this model. **Save & next model** stores it and moves on.
+
+Left and right, and top and bottom, are measured separately because they don't always match. The page flags unequal pairs, since xLights' Window Frame model has a single count for both sides. Unsaved models later on the string move along with each change, and the results table (copyable as Markdown) lists each model's first pixel, side counts and nulls.
 
 While it's lit the controller ignores live DDP data (`lor: 2`), so stop FPP playback first. **Done (restore)** unfreezes the segment, restores the brightness and turns live data back on; leaving the page does the same, and a reboot always does. Nothing is written to the controller's config or presets. The port must be covered by a single WLED segment.
 

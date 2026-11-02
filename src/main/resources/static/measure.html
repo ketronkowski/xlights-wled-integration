@@ -41,36 +41,43 @@
       <span id="itemSaved" class="m-badge"></span>
     </div>
 
-    <div class="m-legend">
-      <span><i style="background:#ff2020"></i>spare (null)</span>
-      <span><i style="background:#20ff40"></i><i style="background:#20e0ff"></i>on the model</span>
-      <span><i style="background:#ffffff"></i>first pixel of each side</span>
-    </div>
+    <ol id="steps" class="m-steps" aria-label="Steps for this model"></ol>
 
-    <div class="m-adjust">
-      <span class="m-label">Start pixel <b id="firstVal"></b></span>
-      <div class="m-btns">
-        <button type="button" data-shift="-5">&minus;5</button>
-        <button type="button" data-shift="-1">&minus;1</button>
-        <button type="button" data-shift="1">+1</button>
-        <button type="button" data-shift="5">+5</button>
+    <div class="m-step">
+      <p class="m-step-title" id="stepTitle"></p>
+      <p class="m-step-help" id="stepHelp"></p>
+      <div class="m-adjust">
+        <span class="m-label" id="stepLabel"></span>
+        <div class="m-btns">
+          <button type="button" data-step="-5">&minus;5</button>
+          <button type="button" data-step="-1">&minus;1</button>
+          <button type="button" data-step="1">+1</button>
+          <button type="button" data-step="5">+5</button>
+        </div>
       </div>
     </div>
 
-    <div id="sides"></div>
+    <div class="m-legend">
+      <span><i style="background:#ff2020"></i>spare (null)</span>
+      <span><i style="background:#20ff40"></i>being measured</span>
+      <span><i style="background:#ffffff"></i>marker pixel</span>
+      <span><i style="background:#20e0ff"></i>done</span>
+    </div>
 
     <dl class="m-facts">
-      <div><dt>Last pixel</dt><dd id="lastVal"></dd></div>
-      <div><dt>Model length</dt><dd id="lenVal"></dd></div>
       <div><dt>Spare before</dt><dd id="nullBefore"></dd></div>
       <div><dt>Spare after</dt><dd id="nullAfter"></dd></div>
+      <div><dt>First pixel</dt><dd id="firstVal"></dd></div>
+      <div><dt>Last pixel</dt><dd id="lastVal"></dd></div>
+      <div class="m-wide"><dt>Sides</dt><dd id="sidesVal"></dd></div>
     </dl>
+    <p id="mismatch" class="m-mismatch" hidden></p>
 
     <label class="m-check"><input type="checkbox" id="ripple" checked /> Move the unsaved models after this one along with it</label>
 
     <div class="m-row">
-      <button id="prevBtn" type="button">&larr; Prev</button>
-      <button id="saveBtn" class="action" type="button">Save &amp; next</button>
+      <button id="backBtn" type="button">&larr; Back</button>
+      <button id="nextBtn" class="action" type="button">Next &rarr;</button>
     </div>
   </section>
 

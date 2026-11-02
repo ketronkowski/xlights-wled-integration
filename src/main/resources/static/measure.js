@@ -1,5 +1,6 @@
-// Boundary finder: light one port in measuring colors, nudge each model's start and
-// side counts until the colors line up with the real frame, and save the result.
+// Boundary finder: light one port in measuring colors and walk each model step by step:
+// first find its start pixel (which also gives the spare pixels before it), then each
+// side's end corner in wiring order, then review the whole frame and save.
 //
 // A plan is { controllers: [{ name, ip, ports: [{ port, label, items: [...] }] }] }.
 // Each item is { name, kind, sides: [counts in wiring order], sideNames, first, saved }.
@@ -8,9 +9,10 @@
 
 const COLORS = {
   spare: 'FF2020',
-  sideA: '20FF40',
-  sideB: '20E0FF',
-  corner: 'FFFFFF',
+  active: '20FF40',
+  done: '20E0FF',
+  marker: 'FFFFFF',
+  pending: '0A3020',
   otherA: '0A4014',
   otherB: '0A3848',
 };
@@ -19,6 +21,7 @@ const $ = (id) => document.getElementById(id);
 
 let plan = null;
 let sel = { c: 0, p: 0, i: 0 };
+let step = 0;         // 0 = start pixel, 1..n = side n, n+1 = review
 let session = null;   // { ip, port, busLen } while lit
 let paintTimer = null;
 let painting = false;
@@ -26,6 +29,7 @@ let paintAgain = false;
 
 // ── Derived values ─────────────────────────────────────────────────────────
 
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 const lengthOf = (item) => item.sides.reduce((a, b) => a + b, 0);
 const endOf = (item) => item.first + lengthOf(item);          // exclusive
 const port = () => plan.controllers[sel.c].ports[sel.p];
@@ -41,25 +45,57 @@ function gapAfter(items, idx, busLen) {
   return busLen == null ? null : busLen - endOf(items[idx]);
 }
 
-// Ranges to paint for the whole port. The selected item is bright; the others are dim
-// so you can still see where they sit. Anything not on a model is lit red: those are
-// the spare pixels that become null models in xLights.
-function paintRanges(items, current, busLen) {
+// Ranges to paint for the whole port. Anything not on a model is red: those are the
+// spare pixels that become null models in xLights. Other models are dim so you can see
+// where they sit. The current model is lit according to the step you're on.
+function paintRanges(items, current, curStep, busLen) {
   const total = busLen ?? Math.max(...items.map(endOf));
   const ranges = [{ start: 0, stop: total, color: COLORS.spare }];
   items.forEach((it, idx) => {
-    const bright = idx === current;
     let pos = it.first;
-    it.sides.forEach((n, s) => {
-      const color = s % 2 === 0
-        ? (bright ? COLORS.sideA : COLORS.otherA)
-        : (bright ? COLORS.sideB : COLORS.otherB);
-      ranges.push({ start: pos, stop: pos + n, color });
-      if (bright && n > 0) ranges.push({ start: pos, stop: pos + 1, color: COLORS.corner });
-      pos += n;
+    const n = it.sides.length;
+    it.sides.forEach((len, s) => {
+      const stop = pos + len;
+      if (idx !== current) {
+        ranges.push({ start: pos, stop, color: s % 2 === 0 ? COLORS.otherA : COLORS.otherB });
+      } else if (curStep === 0) {
+        // Finding the start: the model is dim, its first pixel is the marker.
+        ranges.push({ start: pos, stop, color: COLORS.pending });
+        if (s === 0) ranges.push({ start: pos, stop: pos + 1, color: COLORS.marker });
+      } else if (curStep <= n) {
+        // Finding the end of side (curStep - 1): its last pixel is the marker.
+        const k = curStep - 1;
+        const color = s < k ? COLORS.done : s === k ? COLORS.active : COLORS.pending;
+        ranges.push({ start: pos, stop, color });
+        if (s === k && len > 0) ranges.push({ start: stop - 1, stop, color: COLORS.marker });
+      } else {
+        // Review: sides alternate colors, first pixel of each side is the marker.
+        ranges.push({ start: pos, stop, color: s % 2 === 0 ? COLORS.active : COLORS.done });
+        if (len > 0) ranges.push({ start: pos, stop: pos + 1, color: COLORS.marker });
+      }
+      pos = stop;
     });
   });
   return ranges.filter((r) => r.stop > r.start);
+}
+
+// Left/right and top/bottom should usually match. xLights' Window Frame model has one
+// count for both sides, so unequal sides need attention; top and bottom are separate.
+function mismatches(it) {
+  if (it.kind !== 'frame' || !it.sideNames) return [];
+  const get = (name) => {
+    const i = it.sideNames.indexOf(name);
+    return i < 0 ? null : it.sides[i];
+  };
+  const out = [];
+  const [l, r, t, b] = ['left', 'right', 'top', 'bottom'].map(get);
+  if (l != null && r != null && l !== r) out.push(`Left ${l} and right ${r} differ. xLights' Window Frame uses one side count, so this window needs a custom model or an adjusted submodel.`);
+  if (t != null && b != null && t !== b) out.push(`Top ${t} and bottom ${b} differ. Window Frame has separate top and bottom counts, so set each one.`);
+  return out;
+}
+
+function sidesText(it) {
+  return it.sides.map((n, s) => `${it.sideNames?.[s] ?? 'side ' + (s + 1)} ${n}`).join(', ');
 }
 
 // ── API ────────────────────────────────────────────────────────────────────
@@ -107,7 +143,7 @@ async function paintNow() {
       body: JSON.stringify({
         ip: session.ip,
         brightness: Number($('bri').value),
-        ranges: paintRanges(port().items, sel.i, session.busLen),
+        ranges: paintRanges(port().items, sel.i, step, session.busLen),
       }),
     });
     setStatus(`Lit ${controller().name} port ${session.port}`);
@@ -180,17 +216,40 @@ function changeSide(s, delta) {
   changed();
 }
 
+// The single ± control does whatever the current step measures.
+function adjust(delta) {
+  if (step === 0) shiftStart(delta);
+  else if (step <= item().sides.length) changeSide(step - 1, delta);
+}
+
 function changed() {
   render();
   schedulePaint();
 }
 
-async function saveAndNext() {
+function goToItem(idx) {
+  sel.i = idx;
+  step = item().saved ? item().sides.length + 1 : 0;
+  changed();
+}
+
+async function next() {
   const it = item();
+  if (step <= it.sides.length) {
+    step += 1;
+    changed();
+    return;
+  }
   it.saved = true;
   it.savedAt = new Date().toISOString();
   await savePlan();
-  if (sel.i < port().items.length - 1) sel.i += 1;
+  if (sel.i < port().items.length - 1) goToItem(sel.i + 1);
+  else { setStatus('Last model on this port saved. Pick the next port above.'); changed(); }
+}
+
+function back() {
+  if (step > 0) step -= 1;
+  else if (sel.i > 0) { sel.i -= 1; step = item().sides.length + 1; }
   changed();
 }
 
@@ -219,40 +278,64 @@ function render() {
     b.type = 'button';
     b.textContent = it.name.replace(/^Window - /, '');
     b.className = (idx === sel.i ? 'current ' : '') + (it.saved ? 'saved' : '');
-    b.onclick = () => { sel.i = idx; changed(); };
+    b.onclick = () => goToItem(idx);
     list.appendChild(b);
   });
 
   const it = item();
+  const n = it.sides.length;
+  if (step > n + 1) step = n + 1;
   $('itemCard').hidden = false;
   $('itemName').textContent = it.name;
   $('itemSaved').textContent = it.saved ? 'saved' : '';
+
+  const names = ['Start', ...it.sides.map((_, s) => cap(it.sideNames?.[s] ?? `Side ${s + 1}`)), 'Review'];
+  const stepsEl = $('steps');
+  stepsEl.innerHTML = '';
+  names.forEach((label, k) => {
+    const li = document.createElement('li');
+    li.textContent = label;
+    li.className = k === step ? 'current' : (k < step || it.saved ? 'done' : '');
+    li.onclick = () => { step = k; changed(); };
+    stepsEl.appendChild(li);
+  });
+
+  const adjustable = step <= n;
+  document.querySelectorAll('[data-step]').forEach((b) => { b.disabled = !adjustable; });
+  if (step === 0) {
+    $('stepTitle').textContent = `Step 1 of ${n + 2}: find the first pixel`;
+    $('stepHelp').textContent = 'Move until the white pixel is the first one on the frame. Red pixels before it are spare and become the null.';
+    $('stepLabel').innerHTML = `Start pixel <b>${it.first}</b>`;
+  } else if (adjustable) {
+    const name = it.sideNames?.[step - 1] ?? `side ${step}`;
+    $('stepTitle').textContent = `Step ${step + 1} of ${n + 2}: ${name}`;
+    $('stepHelp').textContent = n === 1
+      ? 'Move until the white pixel is the last one on the model.'
+      : `Move until the white pixel sits on the corner where the ${name} ends. Blue is already measured.`;
+    $('stepLabel').innerHTML = `${cap(name)} pixels <b>${it.sides[step - 1]}</b>`;
+  } else {
+    $('stepTitle').textContent = `Step ${n + 2} of ${n + 2}: check and save`;
+    $('stepHelp').textContent = 'Each side alternates green and blue, with a white pixel at each corner. Red after the frame is spare.';
+    $('stepLabel').textContent = '';
+  }
+  $('nextBtn').textContent = adjustable ? 'Next \u2192' : (sel.i < items.length - 1 ? 'Save & next model' : 'Save');
+  $('backBtn').disabled = step === 0 && sel.i === 0;
+
   $('firstVal').textContent = it.first;
   $('lastVal').textContent = endOf(it) - 1;
-  $('lenVal').textContent = lengthOf(it);
+  $('sidesVal').textContent = `${sidesText(it)} (${lengthOf(it)} total)`;
 
   const before = gapBefore(items, sel.i);
   const after = gapAfter(items, sel.i, busLen);
   $('nullBefore').textContent = before;
   $('nullBefore').classList.toggle('warn', before < 0);
-  $('nullAfter').textContent = after == null ? '—' : after;
+  $('nullAfter').textContent = after == null ? '\u2014' : after;
   $('nullAfter').classList.toggle('warn', after != null && after < 0);
 
-  const sides = $('sides');
-  sides.innerHTML = '';
-  it.sides.forEach((n, s) => {
-    const row = document.createElement('div');
-    row.className = 'm-adjust';
-    const name = it.sideNames?.[s] ?? `side ${s + 1}`;
-    row.innerHTML = `<span class="m-label">${name} <b>${n}</b></span>
-      <div class="m-btns"><button type="button">&minus;1</button><button type="button">+1</button></div>`;
-    const [minus, plus] = row.querySelectorAll('button');
-    minus.onclick = () => changeSide(s, -1);
-    plus.onclick = () => changeSide(s, 1);
-    sides.appendChild(row);
-  });
+  const mm = mismatches(it);
+  $('mismatch').hidden = mm.length === 0 || step <= 0;
+  $('mismatch').textContent = mm.join(' ');
 
-  $('prevBtn').disabled = sel.i === 0;
   renderResults();
 }
 
@@ -262,7 +345,8 @@ function resultRows() {
     rows: p.items.map((it, idx) => ({
       name: it.name,
       first: it.first,
-      sides: it.sides.join('/'),
+      sides: sidesText(it),
+      mismatch: mismatches(it).length > 0,
       length: lengthOf(it),
       after: gapAfter(p.items, idx, null),
       before: idx === 0 ? it.first : null,
@@ -284,7 +368,7 @@ function renderResults() {
       const tr = document.createElement('tr');
       const after = r.after == null ? 'end' : r.after;
       tr.innerHTML = `<td>${r.name.replace(/^Window - /, '')}</td><td>${r.first}</td><td>${r.sides}</td>
-        <td>${r.length}</td><td class="${r.after < 0 ? 'warn' : ''}">${after}</td><td>${r.saved ? '✓' : ''}</td>`;
+        <td>${r.length}</td><td class="${r.after < 0 ? 'warn' : ''}">${after}</td><td>${r.saved ? '✓' : ''}${r.mismatch ? ' <span class="warn">≠</span>' : ''}</td>`;
       t.appendChild(tr);
     });
     el.appendChild(t);
@@ -292,10 +376,10 @@ function renderResults() {
 }
 
 function markdownTable() {
-  const lines = ['| Port | Model | First px | Sides (wiring order) | Length | Null before | Null after | Saved |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- |'];
+  const lines = ['| Port | Model | First px | Sides (wiring order) | Length | Null before | Null after | Sides unequal | Saved |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- |'];
   resultRows().forEach((g) => g.rows.forEach((r) => {
-    lines.push(`| ${g.title} | ${r.name} | ${r.first} | ${r.sides} | ${r.length} | ${r.before ?? ''} | ${r.after ?? 'end of string'} | ${r.saved ? 'yes' : 'no'} |`);
+    lines.push(`| ${g.title} | ${r.name} | ${r.first} | ${r.sides} | ${r.length} | ${r.before ?? ''} | ${r.after ?? 'end of string'} | ${r.mismatch ? 'yes' : ''} | ${r.saved ? 'yes' : 'no'} |`);
   }));
   return lines.join('\n');
 }
@@ -312,17 +396,18 @@ async function init() {
     const wasLit = !!session;
     if (wasLit) await stopSession();
     sel = { c, p, i: 0 };
+    step = item().saved ? item().sides.length + 1 : 0;
     render();
     if (wasLit) startSession();
   };
   $('startBtn').onclick = startSession;
   $('stopBtn').onclick = stopSession;
   $('bri').oninput = schedulePaint;
-  document.querySelectorAll('[data-shift]').forEach((b) => {
-    b.onclick = () => shiftStart(Number(b.dataset.shift));
+  document.querySelectorAll('[data-step]').forEach((b) => {
+    b.onclick = () => adjust(Number(b.dataset.step));
   });
-  $('prevBtn').onclick = () => { if (sel.i > 0) { sel.i -= 1; changed(); } };
-  $('saveBtn').onclick = saveAndNext;
+  $('backBtn').onclick = back;
+  $('nextBtn').onclick = next;
   $('copyBtn').onclick = async () => {
     try {
       await navigator.clipboard.writeText(markdownTable());
@@ -335,6 +420,7 @@ async function init() {
     if (!confirm('Throw away all measurements and go back to the starting guesses?')) return;
     plan = await api('plan', { method: 'DELETE' });
     sel = { c: 0, p: 0, i: 0 };
+    step = 0;
     renderPortSelect();
     changed();
   };
