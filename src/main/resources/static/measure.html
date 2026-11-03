@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="theme-color" content="#0a0d12" />
+  <title>Pixel Boundary Finder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="measure.css" />
+</head>
+<body class="measure">
+  <header class="m-top">
+    <a href="./" class="m-back">&larr; Controllers</a>
+    <h1>Boundary finder</h1>
+  </header>
+
+  <section class="m-panel">
+    <div class="m-row">
+      <label class="m-field">Controller &amp; port
+        <select id="portSelect"></select>
+      </label>
+      <label class="m-field m-bri">Brightness
+        <input type="range" id="bri" min="10" max="255" value="80" />
+      </label>
+    </div>
+    <div class="m-row m-toggles">
+      <label class="m-check"><input type="checkbox" id="blink" checked /> Blink the marker</label>
+      <label class="m-check"><input type="checkbox" id="focus" checked /> Light only what I'm measuring</label>
+    </div>
+    <div class="m-row">
+      <button id="startBtn" class="action" type="button">Light it up</button>
+      <button id="stopBtn" class="action danger" type="button" disabled>Done (restore)</button>
+    </div>
+    <p id="status" class="m-status" role="status"></p>
+  </section>
+
+  <nav id="itemList" class="m-items" aria-label="Models on this port"></nav>
+
+  <section id="itemCard" class="m-panel m-card" hidden>
+    <div class="m-card-head">
+      <h2 id="itemName"></h2>
+      <span id="itemSaved" class="m-badge"></span>
+    </div>
+
+    <div id="orient" class="m-row m-orient">
+      <label class="m-field">String starts at
+        <select id="corner">
+          <option value="br">Bottom right</option>
+          <option value="bl">Bottom left</option>
+          <option value="tl">Top left</option>
+          <option value="tr">Top right</option>
+        </select>
+      </label>
+      <label class="m-field">and runs
+        <select id="dir">
+          <option value="ccw">Counter-clockwise</option>
+          <option value="cw">Clockwise</option>
+        </select>
+      </label>
+    </div>
+
+    <ol id="steps" class="m-steps" aria-label="Steps for this model"></ol>
+
+    <div class="m-step">
+      <p class="m-step-title" id="stepTitle"></p>
+      <p class="m-step-help" id="stepHelp"></p>
+      <div class="m-adjust">
+        <span class="m-label" id="stepLabel"></span>
+        <div class="m-btns">
+          <button type="button" data-step="-5">&minus;5</button>
+          <button type="button" data-step="-1">&minus;1</button>
+          <button type="button" data-step="1">+1</button>
+          <button type="button" data-step="5">+5</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="m-legend">
+      <span><i style="background:#ff2020"></i>spare (null)</span>
+      <span><i style="background:#20ff40"></i>being measured</span>
+      <span><i style="background:#ffffff"></i>marker pixel (blinks)</span>
+      <span><i style="background:#20e0ff"></i>done</span>
+    </div>
+
+    <dl class="m-facts">
+      <div><dt>Pre-null</dt><dd id="nullBefore"></dd></div>
+      <div><dt>Post-null</dt><dd id="nullAfter"></dd></div>
+      <div><dt>First pixel</dt><dd id="firstVal"></dd></div>
+      <div><dt>Last pixel</dt><dd id="lastVal"></dd></div>
+      <div class="m-wide"><dt>Sides</dt><dd id="sidesVal"></dd></div>
+    </dl>
+    <p id="mismatch" class="m-mismatch" hidden></p>
+
+    <label class="m-check"><input type="checkbox" id="ripple" checked /> Move the unsaved models after this one along with it</label>
+
+    <div class="m-row">
+      <button id="backBtn" type="button">&larr; Back</button>
+      <button id="nextBtn" class="action" type="button">Next &rarr;</button>
+    </div>
+  </section>
+
+  <section class="m-panel">
+    <h2>Results</h2>
+    <div id="results"></div>
+    <div class="m-row">
+      <button id="copyBtn" type="button">Copy as table</button>
+      <button id="resetBtn" class="danger" type="button">Reset to starting guesses</button>
+    </div>
+  </section>
+
+  <footer class="app-version" id="appVersion"></footer>
+  <script src="measure.js"></script>
+  <script src="version.js"></script>
+</body>
+</html>

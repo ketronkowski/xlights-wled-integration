@@ -60,6 +60,24 @@ class WledApiClient(
             .toBodilessEntity()
     }
 
+    /** Current global on/brightness, used to restore the device after a measuring session. */
+    fun fetchState(ip: String): WledStateResponse = get(ip, "/json/state", WledStateResponse::class.java)
+
+    /**
+     * POST an arbitrary JSON state body. Used for fields [WledStatePatch] doesn't model,
+     * such as per-LED colors (`seg.i`), freeze (`frz`) and live-data override (`lor`).
+     */
+    fun postState(ip: String, body: Map<String, Any?>) {
+        val json = objectMapper.writeValueAsString(body)
+        log.debug("POST /json/state @ {}  body={}", ip, json)
+        restClient.post()
+            .uri("http://$ip/json/state")
+            .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .body(json)
+            .retrieve()
+            .toBodilessEntity()
+    }
+
     // ── Raw config/preset backup & restore ──────────────────────────────────
     // cfg.json (network/hardware config) and presets.json (presets + playlists)
     // are served/accepted as plain static files, not via the JSON API.

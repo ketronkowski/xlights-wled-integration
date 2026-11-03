@@ -19,6 +19,8 @@ data class WledLedsInfo(
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class WledStateResponse(
+    val on: Boolean = true,
+    val bri: Int = 128,
     val seg: List<WledSegmentDto> = emptyList(),
 )
 
