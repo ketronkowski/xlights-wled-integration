@@ -1,0 +1,20 @@
+name,ip,device
+fpp,192.168.6.10,FPP
+octa1,192.168.6.21,Octa1
+octa2,192.168.6.22,Octa2
+octa3,192.168.6.23,Octa3
+octa5,192.168.6.25,Octa5
+octa6,192.168.6.26,Octa6
+octa7,192.168.6.27,Octa7
+octa8,192.168.6.28,Octa8
+megatree1,192.168.6.31,Mega Tree 1
+megatree2,192.168.6.32,Mega Tree 2
+megatree3,192.168.6.33,Mega Tree 3
+megatree4,192.168.6.34,Mega Tree 4
+front-bed,192.168.6.41,Front Bed
+front-floods,192.168.6.42,Front Floods
+front-left,192.168.6.43,Front Left
+front-right,192.168.6.44,Front Right
+mailbox,192.168.6.45,Mailbox
+presents,192.168.6.46,Presents
+tunein,192.168.6.47,Tune In
