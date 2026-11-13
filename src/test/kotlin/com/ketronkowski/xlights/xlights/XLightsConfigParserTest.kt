@@ -69,4 +69,22 @@ class XLightsConfigParserTest {
         val gap = garage.models.find { it.name == "null-gap-1" }!!
         assertEquals(301, gap.startChannel)    // !garage-wled:301 → 301
     }
+
+    @Test
+    fun `custom model node count comes from the node field of CustomModelCompressed`(@org.junit.jupiter.api.io.TempDir dir: java.nio.file.Path) {
+        dir.resolve("xlights_networks.xml").toFile().writeText("""
+            <Networks><Controller Name="Octa7" IP="1.2.3.4"><network MaxChannels="90"/></Controller></Networks>
+        """.trimIndent())
+        // Entries are node,row,col: 3 nodes laid out up to column 89 / row 40.
+        dir.resolve("xlights_rgbeffects.xml").toFile().writeText("""
+            <xrgb><models>
+              <model name="Snowflake" Controller="Octa7" StartChannel="!Octa7:1" DisplayAs="Custom"
+                     StringType="RGB Nodes" CustomModelCompressed="1,0,10;2,40,89;3,17,26"/>
+            </models></xrgb>
+        """.trimIndent())
+
+        val model = parser.parse(dir).single().models.single()
+
+        assertEquals(3 * 3, model.channelCount)
+    }
 }
