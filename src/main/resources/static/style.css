@@ -470,6 +470,9 @@ button.list-sort-btn:hover:not(:disabled) { color: var(--text-dim); background: 
 
 .list-ip { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-dim); }
 
+.ip-link { color: inherit; text-decoration: underline dotted; text-underline-offset: 2px; }
+.ip-link:hover, .ip-link:focus-visible { color: var(--accent); text-decoration-style: solid; }
+
 .list-view .empty-hint { border: none; padding: 1.5rem 0.9rem; margin: 0; }
 
 /* ── Destructive-reset modal ─────────────────────────────────────────── */

@@ -424,17 +424,24 @@ function backupBadge(controllerName) {
     : { cls: 'warn', text: 'Never backed up' };
 }
 
+// The controller's address, rendered as a link that opens its WLED web UI in
+// a new tab. Unreachable controllers still get a link: the address comes from
+// the xLights config, and the browser may reach it even when the server can't.
+function ipHtml(ip, kind) {
+  if (!ip) return 'no address';
+  const link = `<a class="ip-link" href="http://${escapeHtml(encodeURI(ip))}/" target="_blank" rel="noopener noreferrer" title="Open the WLED UI for ${escapeHtml(ip)}">${escapeHtml(ip)}</a>`;
+  return kind === 'unpaired' ? `${link} · not in xLights config` : link;
+}
+
 function buildCard(row) {
   const { name, ip, reachable, reachableText, reachableCls, syncText, syncCls, syncTitle, backupText, backupCls, kind } = row;
-  const ipDisplay = kind === 'unpaired' ? `${ip} · not in xLights config` : (ip || 'no address');
-
   const card = document.createElement('div');
   card.className = 'card';
   card.innerHTML = `
     <div class="card-header">
       <div>
         <span class="card-title">${escapeHtml(name)}</span>
-        <span class="card-ip">${escapeHtml(ipDisplay)}</span>
+        <span class="card-ip">${ipHtml(ip, kind)}</span>
       </div>
       <label class="card-select">
         <input type="checkbox" class="select-box" ${reachable ? '' : 'disabled'} />
@@ -520,8 +527,6 @@ function renderList(rows) {
 
 function buildListRow(row) {
   const { name, reachable, reachableText, reachableCls, syncText, syncCls, syncTitle, backupText, backupCls, kind, ip } = row;
-  const ipDisplay = kind === 'unpaired' ? `${ip} · not in xLights config` : (ip || 'no address');
-
   const el = document.createElement('div');
   el.className = 'list-row';
   el.innerHTML = `
@@ -529,7 +534,7 @@ function buildListRow(row) {
       <input type="checkbox" class="select-box" ${reachable ? '' : 'disabled'} />
     </label>
     <span class="list-name">${escapeHtml(name)}</span>
-    <span class="list-ip">${escapeHtml(ipDisplay)}</span>
+    <span class="list-ip">${ipHtml(ip, kind)}</span>
     ${reachableText ? `<span class="badge ${reachableCls}">${escapeHtml(reachableText)}</span>` : '<span></span>'}
     ${syncText ? `<span class="badge ${syncCls}" title="${escapeHtml(syncTitle)}">${escapeHtml(syncText)}</span>` : '<span></span>'}
     <span class="badge ${backupCls}">${escapeHtml(backupText)}</span>
