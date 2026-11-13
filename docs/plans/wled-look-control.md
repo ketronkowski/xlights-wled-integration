@@ -1,6 +1,9 @@
 # Plan: "Set Look" for selected WLED controllers
 
-Status: **draft, open questions at the bottom**. No code yet.
+Status: **decisions made (see bottom), ready to build**. No code yet.
+
+This is for controlling the lights **outside show hours**. It never overrides a
+running show.
 
 ## Goal
 
@@ -43,7 +46,10 @@ e.g. "!,Fade rate,,,,Smear;!,!;!;1;sx=24,pal=50"
 - `colors`: 3 entries for the color slots, same empty/`!`/label rule
   (default labels Fx, Bg, Cs).
 - `palette`: empty = palette not used; `!` = used.
-- `flags`: `1` 1D, `2` 2D, `v`/`f` audio-reactive.
+- `flags`: `1` 1D, `2` 2D, `v`/`f` audio-reactive. **Effects whose flags
+  contain `2` but not `1` (2D-only) are hidden** (same test as WLED's UI uses
+  when there's no matrix). Audio-reactive effects stay; without a mic they run
+  on WLED's simulated sound.
 - `defaults`: `sx=24,pal=50`-style values to pre-fill when the effect is picked.
 - An effect with an empty string (e.g. Solid on some builds) shows speed +
   intensity for ids < 128, all 3 color slots labelled 1/2/3, and the palette.
@@ -69,6 +75,9 @@ controller in parallel and returns:
   so the frontend always works in names and the backend maps back to ids),
 - the fxdata string for each common effect (from the first controller),
 - the current state of the first reachable controller, to pre-fill the dialog,
+- which controllers are currently receiving live show data (`/json/info`
+  `live: true`), so the dialog can warn "Octa5 is playing the show; the look
+  won't show until the show stops",
 - the list of controllers that could not be reached.
 
 Cached in memory per IP for the life of the process (effects only change with a
@@ -96,20 +105,25 @@ New endpoint `POST /api/look/apply`:
 
 For each controller the backend:
 
-1. Reads `/json/state` to get its segment ids.
-2. Maps `fx` and `pal` names to that controller's ids.
-3. Builds one `POST /json/state` body:
+1. Reads `/json/state` to get its segments.
+2. Picks the target segments (see "Which segments" below).
+3. Maps `fx` and `pal` names to that controller's ids.
+4. Builds one `POST /json/state` body (it never includes `lor`, so a running
+   show always wins):
 
 ```json
 {
   "on": true, "bri": 180, "tt": 0, "tb": 0,
   "udpn": { "nn": true },
   "seg": [
-    { "id": 0, "fx": 54, "sx": 128, "ix": 128, "pal": 4, "col": [[255,0,0],[255,255,255],[0,255,0]], ... },
-    { "id": 1, ... same ... }
+    { "id": 0, "on": true, "fx": 54, "sx": 128, "ix": 128, "pal": 4, "col": [[255,0,0],[255,255,255],[0,255,0]], ... },
+    { "id": 1, ... same ... },
+    { "id": 2, "on": false }
   ]
 }
 ```
+
+(segment 2 here is a null model.)
 
 Then fires all controllers' POSTs **in parallel** (virtual threads), so they
 land within a few ms of each other, and returns per-controller success or the
@@ -135,6 +149,22 @@ Why each field:
 
 **Off** is just `{"on": false, "tt": 0, "udpn": {"nn": true}}`.
 
+### Which segments
+
+The look goes on every **non-null** segment and null segments stay off.
+"Update Selected" already names each WLED segment after its xLights model, and
+the parser already knows which models are nulls (`LayoutGroup="Nulls"` or a
+name starting with "Null"). So for each segment on the controller:
+
+| Segment | What Apply sends |
+|---|---|
+| Name matches a non-null xLights model | the full look, plus `on: true` |
+| Name matches a null model | `on: false` only |
+| Matches no model (orphan, or the controller isn't paired) | the full look only if the segment is currently on; otherwise left untouched |
+
+The whole look is always sent (effect, every option, all 3 colors, palette),
+never just the fields you changed, so every controller ends up identical.
+
 ### Frontend flow
 
 1. New toolbar button **Set Look…** (enabled when something is selected and
@@ -147,10 +177,13 @@ Why each field:
 
 ## Out of scope for v1
 
-- Saving presets or building playlists on the controllers.
-- Per-segment (per xLights model) looks inside one controller.
+- Saving presets or building playlists on the controllers (a follow-on
+  feature). Looks are temporary and revert to the boot preset on reboot.
+- Overriding a running show (`lor`).
+- Different looks per segment inside one controller.
+- 2D effects.
 - Palette gradient previews.
-- Live preview while dragging sliders.
+- Live preview while dragging sliders; changes go out only on Apply.
 - Scheduling, groups, saved looks in this app.
 
 ## Files touched (estimate)
@@ -163,29 +196,15 @@ Why each field:
 - Tests: fxdata parser cases taken from real WLED strings; `LookService` body
   building (segment ids, name → id mapping, off payload).
 
-## Open questions
+## Decisions (Kevin, 2026-11-13)
 
-1. **Live show data.** When FPP or xLights is streaming DDP to a controller, WLED
-   shows that and ignores effects. Should Apply (a) leave it alone, so the look
-   only appears when nothing is streaming, (b) send `lor: 1`, overriding until
-   the stream stops and restarts, or (c) send `lor: 2`, overriding until reboot
-   (what the boundary finder does)? Recommended: (b) as an "Override live show
-   data" checkbox, on by default.
-2. **Whole controller vs per segment.** Plan applies the look to every segment on
-   each controller. Is that right, or do you ever want, say, only the Mega Tree
-   model on a controller?
-3. **Full look vs changed fields.** Plan sends the whole look (effect, options,
-   colors, palette) so every controller matches exactly. Do you instead want to
-   change only what you touched (e.g. just colors, leaving each controller's
-   effect alone)?
-4. **Presets.** Plan is transient: nothing is saved, and the controller reverts
-   to its boot preset after a reboot. Do you want a "Save as preset N" option, or
-   is transient fine for v1?
-5. **2D and audio effects.** Should 2D-only effects (flag `2`) be hidden? Are any
-   of your controllers (Mega Tree?) set up as a 2D matrix in WLED, or with an
-   audio-reactive build?
-6. **Apply vs live.** Plan uses an Apply button. Do you want changes to go out
-   live as you drag sliders and click colors instead?
+1. **Live show data:** leave the show alone. This is for outside show hours, so
+   no `lor` is sent; the dialog only warns when a controller is live.
+2. **Segments:** every non-null segment gets the look; nulls stay off.
+3. **Whole look:** Apply always sends the full look.
+4. **Presets:** temporary change for now; presets come in a follow-on feature.
+5. **2D effects:** hidden.
+6. **Apply button:** nothing goes out until Apply is pressed.
 
 ## Sources
 
