@@ -6,4 +6,5 @@ data class XLightsModel(
     val startChannel: Int,    // 1-based, absolute within the controller's channel range
     val channelCount: Int,
     val isNull: Boolean,      // true = gap/placeholder model, should map to disabled WLED segment
+    val bytesPerNode: Int = 3, // 3 = RGB, 4 = RGBW (from the model's StringType)
 )

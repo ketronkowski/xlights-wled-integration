@@ -154,6 +154,34 @@ class ValidationServiceTest {
         verify(apiClient, never()).patchState(any(), any())
     }
 
+    // ── channels per pixel ──────────────────────────────────────────────────────
+
+    @Test
+    fun `pixel ranges use xLights RGB channels even when WLED reports an RGBW capable device`() {
+        // A controller with one RGBW output among RGB ones reports lc=3, which maps to bytesPerPixel=4.
+        val parser = mock<XLightsConfigParser>()
+        val apiClient = mock<WledApiClient>()
+        whenever(parser.parse(any())).thenReturn(listOf(controller))
+        whenever(apiClient.fetchDevice(controller.ipAddress!!)).thenReturn(perfectDevice.copy(bytesPerPixel = 4))
+        val service = ValidationService(parser, mock<WledDiscovery>(), apiClient, mock<WledBackupService>())
+
+        val report = service.validate(java.nio.file.Path.of("."), 0, setOf("garage-wled"))
+
+        val cv = report.controllerValidations.first()
+        assertTrue(cv.segmentValidations.all { it.status == SegmentStatus.OK })
+        assertTrue(cv.totalLedsMatch)
+    }
+
+    @Test
+    fun `channelsPerPixel is 4 only when every model is RGBW`() {
+        val service = ValidationService(mock(), mock(), mock(), mock())
+        val rgbw = controller.copy(models = controller.models.map { it.copy(bytesPerNode = 4) })
+        val mixed = controller.copy(models = controller.models.mapIndexed { i, m -> if (i == 0) m.copy(bytesPerNode = 4) else m })
+        assertEquals(4, service.channelsPerPixel(rgbw))
+        assertEquals(3, service.channelsPerPixel(mixed))
+        assertEquals(3, service.channelsPerPixel(controller))
+    }
+
     // ── fix() patch planning ────────────────────────────────────────────────────
     // WLED applies a "seg" entry without an "id" to the segment at that entry's
     // array index, so every patch fix() sends must carry an explicit id.

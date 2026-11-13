@@ -110,6 +110,7 @@ class XLightsConfigParser {
                 startChannel   = startChannel,
                 channelCount   = channelCount,
                 isNull         = isNull,
+                bytesPerNode   = if (el.getAttribute("StringType").contains("RGBW", ignoreCase = true)) 4 else 3,
             )
             log.debug("Parsed model: {}  ctrl={}  start={}  ch={}  null={}", name, controllerName, startChannel, channelCount, isNull)
         }

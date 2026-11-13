@@ -167,7 +167,7 @@ class ValidationService(
             }
 
             // Step 3: create segments in xLights model order (up to firmware limit)
-            val bpp = device.bytesPerPixel
+            val bpp = channelsPerPixel(controller)
             effective.take(device.maxSegments).forEachIndexed { index, model ->
                 val pixelStart = (model.startChannel - 1) / bpp
                 val pixelStop  = minOf(pixelStart + model.channelCount / bpp, device.totalLeds)
@@ -305,7 +305,7 @@ class ValidationService(
                 pairedWled    += device.name
             }
 
-            val bpp          = device?.bytesPerPixel ?: 3
+            val bpp          = channelsPerPixel(controller)
             val expectedLeds = controller.totalChannels / bpp
             val effective    = collapseGroups(controller.models)
             val segValidations = effective.map { model ->
@@ -360,6 +360,14 @@ class ValidationService(
             status             = status,
         )
     }
+
+    // Channels per pixel in the controller's xLights channel space, which is what
+    // xLights sends over DDP. Taken from the models, not WLED's light capability:
+    // a controller with one RGBW output among RGB ones (e.g. a white flood on an
+    // Octa) reports lc=3 (RGBW) even though xLights addresses the RGB models at 3
+    // channels per pixel, and dividing by 4 there puts every segment in the wrong place.
+    internal fun channelsPerPixel(controller: XLightsController): Int =
+        if (controller.models.isNotEmpty() && controller.models.all { it.bytesPerNode == 4 }) 4 else 3
 
     // Pair WLED device name to xLights controller name:
     //  1. Exact match (case-insensitive): "Octa1" == "Octa1"
