@@ -1,0 +1,68 @@
+/* Phone-first layout for the boundary finder; colors come from style.css tokens. */
+body.measure { padding: 0 16px 3rem; max-width: 640px; margin: 0 auto; }
+
+.m-top { display: flex; align-items: baseline; gap: 1rem; padding: 1rem 0 0.5rem; }
+.m-top h1 { font-size: 1.3rem; margin: 0; }
+.m-back { color: var(--text-dim); text-decoration: none; font-size: 0.9rem; }
+
+.m-panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem;
+  margin: 0.75rem 0;
+}
+.m-panel h2 { margin: 0 0 0.6rem; font-size: 1.1rem; }
+
+.m-row { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0.5rem 0; }
+.m-row > button { flex: 1 1 0; min-height: 48px; font-size: 1rem; }
+.m-field { display: flex; flex-direction: column; gap: 0.3rem; flex: 1 1 200px; min-width: 0; color: var(--text-dim); font-size: 0.85rem; }
+.m-field select { width: 100%; min-width: 0; text-overflow: ellipsis; min-height: 44px; font-size: 1rem; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; padding: 0 0.5rem; }
+.m-bri input { width: 100%; min-height: 44px; }
+.m-status { min-height: 1.2em; margin: 0.3rem 0 0; color: var(--text-dim); font-family: var(--font-mono); font-size: 0.85rem; }
+.m-status.err { color: var(--err); }
+
+.m-items { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.m-items button { min-height: 40px; font-size: 0.85rem; padding: 0 0.7rem; }
+.m-items button.current { border-color: var(--accent); color: var(--accent); }
+.m-items button.saved::after { content: " \2713"; color: var(--ok); }
+
+.m-card-head { display: flex; justify-content: space-between; align-items: center; }
+.m-badge { font-size: 0.8rem; color: var(--ok); }
+
+.m-legend { display: flex; flex-wrap: wrap; gap: 0.8rem; font-size: 0.8rem; color: var(--text-dim); margin: 0.4rem 0 0.8rem; }
+.m-legend i { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 50%; margin-right: 0.2rem; vertical-align: -1px; }
+
+.m-adjust { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.45rem 0; border-top: 1px solid var(--border); }
+.m-label { font-size: 0.95rem; }
+.m-label b { font-family: var(--font-mono); color: var(--accent); margin-left: 0.3rem; }
+.m-btns { display: flex; gap: 0.35rem; }
+.m-btns button { min-width: 48px; min-height: 48px; font-size: 1rem; padding: 0; }
+
+.m-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 1rem; margin: 0.8rem 0; }
+.m-facts div { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--border); padding-bottom: 0.2rem; }
+.m-facts dt { color: var(--text-dim); font-size: 0.85rem; }
+.m-facts dd { margin: 0; font-family: var(--font-mono); }
+.m-facts dd.warn { color: var(--err); }
+
+.m-check { display: flex; gap: 0.5rem; align-items: center; font-size: 0.85rem; color: var(--text-dim); margin: 0.4rem 0; }
+
+#results table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 0.78rem; }
+#results th, #results td { text-align: left; padding: 0.3rem 0.25rem; border-bottom: 1px solid var(--border); }
+#results th { color: var(--text-dim); font-weight: 500; }
+#results h3 { font-size: 0.95rem; margin: 0.8rem 0 0.3rem; }
+#results .warn { color: var(--err); }
+
+.m-steps { display: flex; gap: 0.3rem; list-style: none; padding: 0; margin: 0.6rem 0; flex-wrap: wrap; }
+.m-steps li { font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text-dim); cursor: pointer; }
+.m-steps li.done { border-color: color-mix(in srgb, var(--ok) 55%, var(--border-strong)); color: var(--ok); }
+.m-steps li.current { border-color: var(--accent); color: var(--accent); }
+.m-step { border-top: 1px solid var(--border); padding-top: 0.5rem; }
+.m-step-title { font-size: 1.05rem; margin: 0.2rem 0; }
+.m-step-help { font-size: 0.85rem; color: var(--text-dim); margin: 0 0 0.3rem; }
+.m-facts .m-wide { grid-column: 1 / -1; gap: 0.75rem; }
+.m-facts .m-wide dd { text-align: right; font-size: 0.85rem; }
+.m-mismatch { font-size: 0.85rem; color: var(--warn); margin: 0 0 0.5rem; }
+.m-toggles { gap: 0.3rem 1rem; }
+.m-toggles .m-check { margin: 0; min-height: 36px; }
+.m-orient .m-field { flex: 1 1 140px; }

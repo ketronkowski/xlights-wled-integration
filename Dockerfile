@@ -13,6 +13,9 @@ RUN ./gradlew bootJar --no-daemon -x test
 
 FROM eclipse-temurin:21-jre-alpine AS runtime
 WORKDIR /app
+# Commit the image was built from, shown in the UI footer.
+ARG GIT_SHA=unknown
+ENV APP_GIT_SHA=$GIT_SHA
 COPY --from=build /workspace/build/libs/xlights-wled-integration.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
