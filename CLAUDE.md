@@ -9,6 +9,6 @@ When opening a PR in this repo (`gh pr create` or otherwise), always title it us
 - `feat: ...` — a new feature (bumps the minor version)
 - `fix: ...` — a bug fix (bumps the patch version)
 - `docs:`, `chore:`, `refactor:`, `test:`, `ci:`, `style:`, `perf:` — no version bump, but still categorized in the changelog
-- `feat!: ...` or a `BREAKING CHANGE:` footer — a breaking change (bumps the major version, once past 1.0.0)
+- `feat!: ...` or a `BREAKING CHANGE:` footer — a breaking change (bumps the major version)
 
 A required "Semantic Pull Request" check enforces this on every PR — pick the type that matches the actual change.

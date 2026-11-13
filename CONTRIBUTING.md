@@ -37,7 +37,7 @@ PRs in this repo are squash-merged, so **the PR title becomes the commit message
 - `feat: ...` — a new feature (bumps the minor version)
 - `fix: ...` — a bug fix (bumps the patch version)
 - `docs:`, `chore:`, `refactor:`, `test:`, `ci:`, `style:`, `perf:` — no version bump, but still shows up in the changelog under the right section
-- `feat!: ...`, or a `BREAKING CHANGE:` footer — a breaking change (bumps the major version, once past 1.0.0)
+- `feat!: ...`, or a `BREAKING CHANGE:` footer — a breaking change (bumps the major version)
 
 This is enforced by a required "Semantic Pull Request" check rather than left to self-discipline — a non-conforming title will fail that check and block merge.
 
