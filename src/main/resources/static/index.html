@@ -37,6 +37,7 @@
       <button id="backupSelectedBtn" class="action" disabled>Backup Selected</button>
       <button id="restoreSelectedBtn" class="action danger" disabled>Restore Selected</button>
       <button id="updateSelectedBtn" class="action" disabled>Update Selected</button>
+      <button id="setLookBtn" class="action" disabled>Set Look…</button>
       <span class="sep"></span>
       <button id="clearAllBtn" class="action danger" type="button">Clear All Controllers</button>
     </div>
@@ -97,6 +98,72 @@
       <div class="modal-actions">
         <button id="clearAllCancelBtn" type="button">Cancel</button>
         <button id="clearAllConfirmBtn" class="action danger" type="button" disabled>Clear Everything</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="lookModal" class="modal-overlay" hidden>
+    <div class="modal look-modal" role="dialog" aria-modal="true" aria-labelledby="lookTitle">
+      <div class="look-head">
+        <h2 id="lookTitle">Set Look</h2>
+        <span id="lookTargets" class="look-targets"></span>
+      </div>
+      <p class="look-hint">For outside show hours: a running show always wins. Nothing changes on the controllers until you press Apply.</p>
+      <div id="lookNotice" class="look-notice" hidden></div>
+      <p id="lookLoading" class="progress-status-line">Loading effects…</p>
+      <div id="lookBody" class="look-body" hidden>
+        <div class="look-col">
+          <section class="look-section">
+            <h3>Power</h3>
+            <div class="look-power">
+              <div class="look-power-row">
+                <label class="look-toggle" title="Takes effect right away, no Apply needed"><input type="checkbox" id="lookOn" class="look-switch" role="switch" /> <span id="lookOnLabel">On</span></label>
+                <span id="lookPowerStatus" class="look-power-status"></span>
+              </div>
+              <label class="look-slider">
+                <span class="look-slider-label">Brightness</span>
+                <input type="range" id="lookBri" min="1" max="255" />
+                <output id="lookBriVal" class="look-slider-value"></output>
+              </label>
+            </div>
+          </section>
+          <section class="look-section">
+            <h3>Effect</h3>
+            <input type="search" id="lookFxSearch" class="filter-input look-search" placeholder="Search effects…" autocomplete="off" />
+            <div id="lookFxList" class="look-list" role="listbox" aria-label="Effects"></div>
+          </section>
+          <section class="look-section">
+            <h3>Effect options</h3>
+            <div id="lookOpts" class="look-opts"></div>
+          </section>
+        </div>
+        <div class="look-col">
+          <section class="look-section">
+            <h3>Colors</h3>
+            <div id="lookColors">
+              <div id="lookSlots" class="look-slots"></div>
+              <div class="look-picker-row">
+                <input type="color" id="lookColor" class="look-color" aria-label="Color for the selected slot" />
+                <div id="lookSwatches" class="look-swatches"></div>
+              </div>
+            </div>
+            <p id="lookColorsUnused" class="look-unused" hidden>Colors not used by this effect</p>
+          </section>
+          <section class="look-section">
+            <h3 id="lookPalLabel">Color palette</h3>
+            <div id="lookPalWrap">
+              <input type="search" id="lookPalSearch" class="filter-input look-search" placeholder="Search palettes…" autocomplete="off" />
+              <div id="lookPalList" class="look-list" role="listbox" aria-label="Palettes"></div>
+            </div>
+            <p id="lookPalUnused" class="look-unused" hidden>Color palette not used</p>
+          </section>
+        </div>
+      </div>
+      <div class="modal-actions look-actions">
+        <button id="lookRefreshBtn" type="button" title="Re-read effects and palettes from the controllers">Refresh</button>
+        <span class="look-spacer"></span>
+        <button id="lookCloseBtn" type="button">Close</button>
+        <button id="lookApplyBtn" class="action" type="button" disabled>Apply</button>
       </div>
     </div>
   </div>
