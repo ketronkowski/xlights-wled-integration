@@ -357,6 +357,13 @@ button.view-toggle.active {
   border-color: color-mix(in srgb, var(--err) 40%, transparent);
   animation: err-pulse 2.2s ease-in-out infinite;
 }
+.badge.na {
+  background: color-mix(in srgb, var(--text-dim) 12%, transparent);
+  color: var(--text-dim);
+  border-color: var(--border-strong);
+}
+.badge.na::before { background: var(--text-dim); }
+
 .badge.err::before { background: var(--err); box-shadow: 0 0 6px 0 var(--err); }
 
 @keyframes err-pulse {

@@ -7,6 +7,10 @@ spring:
 
 xlights:
   data-dir: ${XLIGHTS_DATA_DIR:/data}
+  # Falcon Player (FPP) show controller. Only needed when FPP's UI password is on.
+  fpp:
+    username: ${FPP_USERNAME:admin}
+    password: ${FPP_PASSWORD:}
 
 management:
   endpoints:
@@ -23,4 +27,5 @@ logging:
     root: WARN
     com.ketronkowski.xlights.validation: INFO
     com.ketronkowski.xlights.wled: INFO
+    com.ketronkowski.xlights.fpp: INFO
     com.ketronkowski.xlights.web: INFO
