@@ -161,7 +161,7 @@ class XLightsConfigParser {
     // Priority:
     //   1. NumStrings × NodesPerString (Single Line, Tree, etc.)
     //   2. Window Frame: TopNodes + BottomNodes + 2×SideNodes
-    //   3. Custom model: parse CustomModelCompressed (triplets col,row,pixelNum) or CustomModel (grid)
+    //   3. Custom model: parse CustomModelCompressed (entries node,row,col[,layer]) or CustomModel (grid)
     //   4. NodeCount / Nodes explicit count
     //   5. StringCount × parm1 (legacy)
     private fun resolveChannelCount(el: Element, modelName: String): Int? {
@@ -183,12 +183,14 @@ class XLightsConfigParser {
             if (total > 0) return total * bytesPerNode
         }
 
-        // Custom model (compressed triplets): "col,row,pixelNum;col,row,pixelNum;..."
-        // The max pixelNum across all triplets = total node count.
+        // Custom model (compressed): "node,row,col;node,row,col;..." (optionally ",layer"
+        // for 3D models). The node number comes FIRST; the max node number is the node
+        // count. (Taking the last field reads the column instead, which gives the model's
+        // width: e.g. a 30-node snowflake 89 columns wide was counted as 89 nodes.)
         val compressed = el.getAttribute("CustomModelCompressed")
         if (compressed.isNotBlank()) {
             val maxPixel = compressed.splitToSequence(';')
-                .mapNotNull { triplet -> triplet.substringAfterLast(',').toIntOrNull() }
+                .mapNotNull { entry -> entry.substringBefore(',').trim().toIntOrNull() }
                 .filter { it > 0 }
                 .maxOrNull()
             if (maxPixel != null) return maxPixel * bytesPerNode
