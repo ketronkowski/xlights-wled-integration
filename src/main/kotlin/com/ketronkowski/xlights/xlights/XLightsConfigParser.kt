@@ -51,6 +51,7 @@ class XLightsConfigParser {
             val ip       = el.getAttribute("IP").takeIf { it.isNotBlank() }
             val protocol = el.getAttribute("Protocol").ifBlank { el.getAttribute("Type") }
             val vendor   = el.getAttribute("Vendor")
+            val model    = el.getAttribute("Model")
 
             // MaxChannels lives on the first child <network> element
             val networkEl = el.getElementsByTagName("network").item(0) as? Element
@@ -64,6 +65,8 @@ class XLightsConfigParser {
                 protocol      = protocol,
                 totalChannels = channels,
                 models        = emptyList(),
+                vendor        = vendor,
+                model         = model,
             )
             log.debug("Parsed controller: {}  vendor={}  ip={}  channels={}", name, vendor, ip, channels)
         }
@@ -110,6 +113,7 @@ class XLightsConfigParser {
                 startChannel   = startChannel,
                 channelCount   = channelCount,
                 isNull         = isNull,
+                bytesPerNode   = if (el.getAttribute("StringType").contains("RGBW", ignoreCase = true)) 4 else 3,
             )
             log.debug("Parsed model: {}  ctrl={}  start={}  ch={}  null={}", name, controllerName, startChannel, channelCount, isNull)
         }
@@ -160,7 +164,7 @@ class XLightsConfigParser {
     // Priority:
     //   1. NumStrings × NodesPerString (Single Line, Tree, etc.)
     //   2. Window Frame: TopNodes + BottomNodes + 2×SideNodes
-    //   3. Custom model: parse CustomModelCompressed (triplets col,row,pixelNum) or CustomModel (grid)
+    //   3. Custom model: parse CustomModelCompressed (entries node,row,col[,layer]) or CustomModel (grid)
     //   4. NodeCount / Nodes explicit count
     //   5. StringCount × parm1 (legacy)
     private fun resolveChannelCount(el: Element, modelName: String): Int? {
@@ -182,12 +186,14 @@ class XLightsConfigParser {
             if (total > 0) return total * bytesPerNode
         }
 
-        // Custom model (compressed triplets): "col,row,pixelNum;col,row,pixelNum;..."
-        // The max pixelNum across all triplets = total node count.
+        // Custom model (compressed): "node,row,col;node,row,col;..." (optionally ",layer"
+        // for 3D models). The node number comes FIRST; the max node number is the node
+        // count. (Taking the last field reads the column instead, which gives the model's
+        // width: e.g. a 30-node snowflake 89 columns wide was counted as 89 nodes.)
         val compressed = el.getAttribute("CustomModelCompressed")
         if (compressed.isNotBlank()) {
             val maxPixel = compressed.splitToSequence(';')
-                .mapNotNull { triplet -> triplet.substringAfterLast(',').toIntOrNull() }
+                .mapNotNull { entry -> entry.substringBefore(',').trim().toIntOrNull() }
                 .filter { it > 0 }
                 .maxOrNull()
             if (maxPixel != null) return maxPixel * bytesPerNode

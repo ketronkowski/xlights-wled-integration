@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.ketronkowski"
-version = "0.1.0" // x-release-please-version
+version = "0.2.0" // x-release-please-version
 
 java {
     toolchain {
@@ -38,6 +38,10 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+springBoot {
+    buildInfo()
 }
 
 tasks.bootJar {

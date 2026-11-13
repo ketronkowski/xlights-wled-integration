@@ -77,6 +77,11 @@ flowchart LR
 | `web` | REST controllers: upload, validate/fix, backups |
 | `domain` | Plain data classes shared across the above |
 | `system` | Orchestrates the destructive "Clear All Controllers" reset (`SystemResetService`) |
+| `measure` | Boundary finder: lights a port in measuring colors and stores the measured plan (`MeasureService`) |
+
+### FPP show controllers
+
+A controller that xLights lists with vendor or model `FPP` (or any non-WLED controller that answers FPP's `/api/system/info`) is treated as a show controller, not a WLED: the app only checks whether it can reach it (Reachable, Needs credentials, Credentials rejected or Unreachable). It has no segment sync, it can't be selected for Update/Backup/Restore, and its backup reads N/A.
 
 ### REST API
 
@@ -90,7 +95,35 @@ flowchart LR
 | `GET` | `/api/backups` | List backups (optionally `?controller=Octa1`) |
 | `POST` | `/api/backups/{controller}` | Manual backup-now |
 | `POST` | `/api/backups/{controller}/restore/{timestamp}` | Restore a backup and reboot the device |
+| `POST` | `/api/measure/start` | Boundary finder: take over one port (`lor: 2`, measuring brightness) |
+| `POST` | `/api/measure/paint` | Set that port's pixels from port-relative color ranges (`seg.i`) |
+| `POST` | `/api/measure/stop` | Unfreeze the segment, restore brightness, accept live data again |
+| `GET` / `PUT` / `DELETE` | `/api/measure/plan` | Read, save, or reset to default the measuring plan and results |
 | `POST` | `/api/system/reset` | Factory reset: every reachable WLED device to hardware-default segments + delete all backups and the uploaded config (no backup taken first) |
+
+### Boundary finder (`/measure.html`)
+
+Window outlines and other chained props usually have a few spare pixels per string that need a null model in xLights. Counting them by eye is tedious, so the boundary finder lights one port from your phone while you stand in the yard:
+
+For a window frame, first pick where its string **starts** (bottom right, bottom left, top left or top right) and which way it **runs** (counter-clockwise or clockwise, seen from the front). That sets the order of the sides; each side's count is kept when you change it. Windows default to bottom right, counter-clockwise.
+
+Each model is then measured in steps, one thing at a time (red is always spare pixels, which become null models):
+
+1. **Start**: move the flashing marker onto the first pixel of the frame itself.
+2. **Pre-null**: if this model's own string has spare pixels before the frame, count them here. They are bright red with the first one flashing; dim red is the previous model's post-null. Usually 0. On the first model of a port, everything before the frame is its pre-null.
+3. **Each side, in wiring order**: the side being measured is green with the marker on its last pixel. Move it until the marker sits on that corner. Sides already measured are blue.
+4. **Post-null**: the spare pixels at the end of this model's own string are bright red, with the last one flashing; dim red is the next model's pre-null. Changing it moves the next model along. On the last model of a port, everything after the frame is its post-null.
+5. **Review**: the whole frame alternates green and blue with the marker at each corner. **Save & next model** stores it and moves on.
+
+The results give each model a **pre-null** (spares before the frame) and a **post-null** (spares after it), so the gap between two windows is split correctly between them. Left and right, and top and bottom, are measured separately because they don't always match; the page flags unequal pairs, since xLights' Window Frame model has a single count for both sides. Unsaved models later on the string move along with each change, and the results copy out as a Markdown table.
+
+The marker flashes about once a second so a single pixel is easy to spot from the street. **Light only what I'm measuring** (on by default) turns everything else off: the start step shows only the spares before the model and its first side, and the spares after it only appear from the last side on. That keeps a corner where the string starts, ends and has spare pixels dangling (bottom right, on most of these windows) readable.
+
+Left and right, and top and bottom, are measured separately because they don't always match. The page flags unequal pairs, since xLights' Window Frame model has a single count for both sides. Unsaved models later on the string move along with each change, and the results table (copyable as Markdown) lists each model's first pixel, side counts and nulls.
+
+While it's lit the controller ignores live DDP data (`lor: 2`), so stop FPP playback first. **Done (restore)** unfreezes the segment, restores the brightness and turns live data back on; leaving the page does the same, and a reboot always does. Nothing is written to the controller's config or presets. The port must be covered by a single WLED segment.
+
+The starting plan (`src/main/resources/measure/default-plan.json`) holds the 2026 window mapping on Octa6; saved measurements live in `/data/measure/plan.json`.
 
 ## Running locally
 
@@ -133,6 +166,7 @@ If you're standing this up on your own cluster, here's what it expects:
 - **Modest resources**: the reference deployment requests `100m` CPU / `256Mi` memory with a `512Mi` memory limit — this is a low-traffic, seasonal internal tool, not something that needs headroom for concurrent load.
 - **Network reachability from the pod to your WLED devices'** LAN — the pod calls out to each device's `/json/*` HTTP API directly by IP/hostname (no `hostNetwork`, no mDNS discovery in-cluster), so make sure routing allows that.
 - **`XLIGHTS_DATA_DIR`** environment variable pointing at the PVC's mount path (defaults to `/data`).
+- **`FPP_USERNAME`** / **`FPP_PASSWORD`** (optional): HTTP basic credentials for a Falcon Player show controller whose UI password is enabled. `FPP_USERNAME` defaults to `admin`. Without them a password-protected FPP shows as "Needs credentials".
 
 ## CI/CD
 

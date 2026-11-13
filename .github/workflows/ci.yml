@@ -71,6 +71,8 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
@@ -146,7 +148,11 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.IMAGE }}:pr-${{ github.event.pull_request.number }}
+          build-args: |
+            GIT_SHA=${{ github.event.pull_request.head.sha }}
+          tags: |
+            ${{ env.IMAGE }}:pr-${{ github.event.pull_request.number }}
+            ${{ env.IMAGE }}:pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -173,6 +179,7 @@ jobs:
       - name: Stamp preview environment from template
         env:
           PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           cd deploy-repo/apps/xlights-wled-integration
@@ -181,7 +188,7 @@ jobs:
           sed -i \
             -e "s/__NAMESPACE__/xlights-wled-pr-$PR/g" \
             -e "s/__PR_NUMBER__/$PR/g" \
-            -e "s/__IMAGE_TAG__/pr-$PR/g" \
+            -e "s/__IMAGE_TAG__/pr-$PR-$SHA/g" \
             "env/pr-$PR/values.yaml"
 
           cat > "argocd/app_pr_$PR.yaml" <<EOF
@@ -201,6 +208,11 @@ jobs:
             destination:
               server: https://kubernetes.default.svc
               namespace: xlights-wled-pr-$PR
+            ignoreDifferences:
+              - group: external-secrets.io
+                kind: ExternalSecret
+                jsonPointers:
+                  - /status
             syncPolicy:
               syncOptions:
                 - ServerSideApply=true

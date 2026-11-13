@@ -30,6 +30,11 @@ data class ValidationReport(
     val controllerValidations: List<ControllerValidation>,
     val unpairedXlightsControllers: List<XLightsController>,
     val unpairedWledDevices: List<WledDevice>,
+    // Populated only by /api/fix: controller name → why its update failed or was incomplete.
+    val updateErrors: Map<String, String> = emptyMap(),
+    // Show controllers (FPP) from the xLights config. They're reported for
+    // reachability only and are never part of WLED sync, backup or reset.
+    val showControllers: List<ShowControllerStatus> = emptyList(),
 ) {
     val hasErrors: Boolean
         get() = unpairedXlightsControllers.isNotEmpty()

@@ -1,6 +1,7 @@
 package com.ketronkowski.xlights.validation
 
 import com.ketronkowski.xlights.domain.*
+import com.ketronkowski.xlights.fpp.FppApiClient
 import com.ketronkowski.xlights.wled.WledApiClient
 import com.ketronkowski.xlights.wled.WledBackupService
 import com.ketronkowski.xlights.wled.WledDiscovery
@@ -100,7 +101,7 @@ class ValidationServiceTest {
     fun `fix backs up the device before patching segments`() {
         val apiClient = mock<WledApiClient>()
         val backupService = mock<WledBackupService>()
-        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService)
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService, mock<FppApiClient>())
 
         val report = buildReport(listOf(controller), listOf(perfectDevice.copy(segments = perfectDevice.segments.drop(1))))
 
@@ -116,7 +117,7 @@ class ValidationServiceTest {
         val apiClient = mock<WledApiClient>()
         val backupService = mock<WledBackupService>()
         whenever(backupService.backup(any())).thenThrow(RuntimeException("connection refused"))
-        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService)
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService, mock<FppApiClient>())
 
         val report = buildReport(listOf(controller), listOf(perfectDevice.copy(segments = perfectDevice.segments.drop(1))))
 
@@ -129,7 +130,7 @@ class ValidationServiceTest {
     fun `fixAll backs up the device before rebuilding segments`() {
         val apiClient = mock<WledApiClient>()
         val backupService = mock<WledBackupService>()
-        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService)
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService, mock<FppApiClient>())
 
         val report = buildReport(listOf(controller), listOf(perfectDevice))
 
@@ -145,7 +146,7 @@ class ValidationServiceTest {
         val apiClient = mock<WledApiClient>()
         val backupService = mock<WledBackupService>()
         whenever(backupService.backup(any())).thenThrow(RuntimeException("connection refused"))
-        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService)
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService, mock<FppApiClient>())
 
         val report = buildReport(listOf(controller), listOf(perfectDevice))
 
@@ -154,12 +155,150 @@ class ValidationServiceTest {
         verify(apiClient, never()).patchState(any(), any())
     }
 
+    // ── channels per pixel ──────────────────────────────────────────────────────
+
+    @Test
+    fun `pixel ranges use xLights RGB channels even when WLED reports an RGBW capable device`() {
+        // A controller with one RGBW output among RGB ones reports lc=3, which maps to bytesPerPixel=4.
+        val parser = mock<XLightsConfigParser>()
+        val apiClient = mock<WledApiClient>()
+        whenever(parser.parse(any())).thenReturn(listOf(controller))
+        whenever(apiClient.fetchDevice(controller.ipAddress!!)).thenReturn(perfectDevice.copy(bytesPerPixel = 4))
+        val service = ValidationService(parser, mock<WledDiscovery>(), apiClient, mock<WledBackupService>(), mock<FppApiClient>())
+
+        val report = service.validate(java.nio.file.Path.of("."), 0, setOf("garage-wled"))
+
+        val cv = report.controllerValidations.first()
+        assertTrue(cv.segmentValidations.all { it.status == SegmentStatus.OK })
+        assertTrue(cv.totalLedsMatch)
+    }
+
+    @Test
+    fun `channelsPerPixel is 4 only when every model is RGBW`() {
+        val service = ValidationService(mock(), mock(), mock(), mock(), mock<FppApiClient>())
+        val rgbw = controller.copy(models = controller.models.map { it.copy(bytesPerNode = 4) })
+        val mixed = controller.copy(models = controller.models.mapIndexed { i, m -> if (i == 0) m.copy(bytesPerNode = 4) else m })
+        assertEquals(4, service.channelsPerPixel(rgbw))
+        assertEquals(3, service.channelsPerPixel(mixed))
+        assertEquals(3, service.channelsPerPixel(controller))
+    }
+
+    // ── fix() patch planning ────────────────────────────────────────────────────
+    // WLED applies a "seg" entry without an "id" to the segment at that entry's
+    // array index, so every patch fix() sends must carry an explicit id.
+
+    private fun reportWithOrphans(device: WledDevice): ValidationReport {
+        val report = buildReport(listOf(controller), listOf(device))
+        val names = controller.models.map { it.name.lowercase() }
+        val cv = report.controllerValidations.first()
+        val orphans = device.segments.filter { (it.name ?: "").lowercase() !in names }
+        return report.copy(controllerValidations = listOf(cv.copy(orphanSegments = orphans)))
+    }
+
+    @Test
+    fun `fix recycles orphan segments for missing models, then appends with explicit ids`() {
+        val apiClient = mock<WledApiClient>()
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, mock<WledBackupService>(), mock<FppApiClient>())
+        // Fresh device: WLED's default unnamed per-bus segments, nothing matches xLights yet.
+        val device = perfectDevice.copy(segments = listOf(
+            WledSegment(0, null, start = 0,   stop = 150, on = true),
+            WledSegment(1, null, start = 150, stop = 300, on = true),
+        ))
+
+        val errors = service.fix(reportWithOrphans(device))
+
+        assertTrue(errors.isEmpty())
+        verify(apiClient).patchState(eq(device.ipAddress), eq(WledStatePatch(listOf(
+            WledSegmentPatch(id = 0, name = "left-icicles",  start = 0,   stop = 100, on = true),
+            WledSegmentPatch(id = 1, name = "null-gap-1",    start = 100, stop = 105, on = false),
+            WledSegmentPatch(id = 2, name = "right-icicles", start = 105, stop = 205, on = true),
+        ))))
+        verify(apiClient, org.mockito.kotlin.times(1)).patchState(any(), any())
+    }
+
+    @Test
+    fun `fix never overwrites an in-sync segment when creating a missing one`() {
+        val apiClient = mock<WledApiClient>()
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, mock<WledBackupService>(), mock<FppApiClient>())
+        // ids 0 and 2 are in sync and "null-gap-1" is MISSING. An id-less create would
+        // land at array index 0 and overwrite "left-icicles".
+        val device = perfectDevice.copy(segments = listOf(perfectDevice.segments[0], perfectDevice.segments[2]))
+
+        service.fix(reportWithOrphans(device))
+
+        verify(apiClient).patchState(eq(device.ipAddress), eq(WledStatePatch(listOf(
+            WledSegmentPatch(id = 3, name = "null-gap-1", start = 100, stop = 105, on = false),
+        ))))
+    }
+
+    @Test
+    fun `fix deletes leftover orphans last, highest id first, in a separate request`() {
+        val apiClient = mock<WledApiClient>()
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, mock<WledBackupService>(), mock<FppApiClient>())
+        val device = perfectDevice.copy(segments = perfectDevice.segments + listOf(
+            WledSegment(3, "old-a", start = 0, stop = 10, on = true),
+            WledSegment(4, null,    start = 10, stop = 20, on = true),
+        ))
+
+        service.fix(reportWithOrphans(device))
+
+        verify(apiClient).patchState(eq(device.ipAddress), eq(WledStatePatch(listOf(
+            WledSegmentPatch(id = 4, stop = 0),
+            WledSegmentPatch(id = 3, stop = 0),
+        ))))
+        verify(apiClient, org.mockito.kotlin.times(1)).patchState(any(), any())
+    }
+
+    @Test
+    fun `fix turns a null model's segment off when correcting its range`() {
+        val apiClient = mock<WledApiClient>()
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, mock<WledBackupService>(), mock<FppApiClient>())
+        val badNull = perfectDevice.segments[1].copy(stop = 110, on = true)
+        val device = perfectDevice.copy(segments = listOf(perfectDevice.segments[0], badNull, perfectDevice.segments[2]))
+
+        service.fix(reportWithOrphans(device))
+
+        verify(apiClient).patchState(eq(device.ipAddress), eq(WledStatePatch(listOf(
+            WledSegmentPatch(id = 1, start = 100, stop = 105, on = false),
+        ))))
+    }
+
+    @Test
+    fun `fix reports models it cannot create because of the firmware segment limit`() {
+        val apiClient = mock<WledApiClient>()
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, mock<WledBackupService>(), mock<FppApiClient>())
+        val device = perfectDevice.copy(maxSegments = 2, segments = emptyList())
+
+        val errors = service.fix(reportWithOrphans(device))
+
+        verify(apiClient).patchState(eq(device.ipAddress), eq(WledStatePatch(listOf(
+            WledSegmentPatch(id = 0, name = "left-icicles", start = 0,   stop = 100, on = true),
+            WledSegmentPatch(id = 1, name = "null-gap-1",   start = 100, stop = 105, on = false),
+        ))))
+        assertTrue(errors.getValue("garage-wled").contains("at most 2 segments"))
+    }
+
+    @Test
+    fun `fix keeps going after one device fails and reports the failure`() {
+        val apiClient = mock<WledApiClient>()
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, mock<WledBackupService>(), mock<FppApiClient>())
+        val other = controller.copy(name = "porch-wled", ipAddress = "192.168.1.101")
+        val failing = perfectDevice.copy(segments = emptyList())
+        val healthy = perfectDevice.copy(name = "porch-wled", ipAddress = "192.168.1.101", segments = emptyList())
+        whenever(apiClient.patchState(eq(failing.ipAddress), any())).thenThrow(RuntimeException("503 Service Unavailable"))
+
+        val errors = service.fix(buildReport(listOf(controller, other), listOf(failing, healthy)))
+
+        verify(apiClient).patchState(eq(healthy.ipAddress), any())
+        assertEquals(mapOf("garage-wled" to "503 Service Unavailable"), errors)
+    }
+
     // ── resetToBusDefaults() ─────────────────────────────────────────────────
 
     @Test
     fun `resetToBusDefaults creates one segment per bus`() {
         val apiClient = mock<WledApiClient>()
-        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, mock<WledBackupService>())
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, mock<WledBackupService>(), mock<FppApiClient>())
 
         val device = perfectDevice.copy(
             segments = perfectDevice.segments, // has ids 0, 1, 2 — ids 1 and 2 should get deleted in step 2
@@ -187,7 +326,7 @@ class ValidationServiceTest {
     @Test
     fun `resetToBusDefaults falls back to a single full-range segment when busses are empty`() {
         val apiClient = mock<WledApiClient>()
-        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, mock<WledBackupService>())
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, mock<WledBackupService>(), mock<FppApiClient>())
 
         val device = perfectDevice.copy(segments = emptyList(), busses = emptyList())
 
@@ -206,11 +345,52 @@ class ValidationServiceTest {
     fun `resetToBusDefaults never backs up the device first`() {
         val apiClient = mock<WledApiClient>()
         val backupService = mock<WledBackupService>()
-        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService)
+        val service = ValidationService(mock<XLightsConfigParser>(), mock<WledDiscovery>(), apiClient, backupService, mock<FppApiClient>())
 
         service.resetToBusDefaults(perfectDevice)
 
         verify(backupService, never()).backup(any())
+    }
+
+    // ── FPP show controllers ────────────────────────────────────────────────────
+
+    @Test
+    fun `FPP controller is reported as a show controller and never fetched as WLED`() {
+        val parser = mock<XLightsConfigParser>()
+        val apiClient = mock<WledApiClient>()
+        val fppClient = mock<FppApiClient>()
+        val fpp = XLightsController("show-player", "10.0.0.5", "DDP", 0, emptyList(), vendor = "FPP")
+        whenever(parser.parse(any())).thenReturn(listOf(controller, fpp))
+        whenever(apiClient.fetchDevice(controller.ipAddress!!)).thenReturn(perfectDevice)
+        whenever(fppClient.checkAccess("show-player", "10.0.0.5"))
+            .thenReturn(ShowControllerStatus("show-player", "10.0.0.5", access = ShowControllerAccess.AUTH_REQUIRED))
+        val service = ValidationService(parser, mock<WledDiscovery>(), apiClient, mock<WledBackupService>(), fppClient)
+
+        val report = service.validate(java.nio.file.Path.of("."), 0)
+
+        verify(apiClient, never()).fetchDevice("10.0.0.5")
+        assertEquals(listOf("garage-wled"), report.controllerValidations.map { it.xLightsController.name })
+        assertEquals(ShowControllerAccess.AUTH_REQUIRED, report.showControllers.single().access)
+        assertTrue(report.unpairedXlightsControllers.none { it.name == "show-player" })
+    }
+
+    @Test
+    fun `controller under another vendor that answers like FPP becomes a show controller`() {
+        val parser = mock<XLightsConfigParser>()
+        val apiClient = mock<WledApiClient>()
+        val fppClient = mock<FppApiClient>()
+        val cape = XLightsController("pixel-cape", "10.0.0.7", "DDP", 0, emptyList(), vendor = "Kulp")
+        whenever(parser.parse(any())).thenReturn(listOf(cape))
+        whenever(apiClient.fetchDevice("10.0.0.7")).thenThrow(RuntimeException("404"))
+        whenever(fppClient.looksLikeFpp("10.0.0.7")).thenReturn(true)
+        whenever(fppClient.checkAccess("pixel-cape", "10.0.0.7"))
+            .thenReturn(ShowControllerStatus("pixel-cape", "10.0.0.7", access = ShowControllerAccess.REACHABLE))
+        val service = ValidationService(parser, mock<WledDiscovery>(), apiClient, mock<WledBackupService>(), fppClient)
+
+        val report = service.validate(java.nio.file.Path.of("."), 0)
+
+        assertTrue(report.controllerValidations.isEmpty())
+        assertEquals("pixel-cape", report.showControllers.single().name)
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

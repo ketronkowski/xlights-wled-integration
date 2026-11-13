@@ -14,7 +14,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>xLights <span class="glyph">⇄</span> WLED</h1>
-      <p class="tagline">Controller sync &amp; backup console</p>
+      <p class="tagline">Controller sync &amp; backup console · <a href="measure.html" class="tagline-link">Boundary finder</a></p>
     </div>
 
     <div class="bar-row">
@@ -56,6 +56,7 @@
           <option value="">All</option>
           <option value="in-sync">In sync</option>
           <option value="needs-update">Needs update</option>
+          <option value="n/a">N/A (show controller)</option>
         </select>
       </label>
       <label class="filter-field">Backup
@@ -63,6 +64,7 @@
           <option value="">All</option>
           <option value="backed-up">Backed up</option>
           <option value="never-backed-up">Never backed up</option>
+          <option value="n/a">N/A (show controller)</option>
         </select>
       </label>
       <span class="sep"></span>
@@ -121,6 +123,8 @@
     </div>
   </div>
 
+  <footer class="app-version" id="appVersion"></footer>
   <script src="app.js"></script>
+  <script src="version.js"></script>
 </body>
 </html>

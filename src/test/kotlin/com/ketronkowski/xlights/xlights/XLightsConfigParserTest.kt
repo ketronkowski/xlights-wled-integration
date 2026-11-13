@@ -69,4 +69,39 @@ class XLightsConfigParserTest {
         val gap = garage.models.find { it.name == "null-gap-1" }!!
         assertEquals(301, gap.startChannel)    // !garage-wled:301 → 301
     }
+
+    @Test
+    fun `custom model node count comes from the node field of CustomModelCompressed`(@org.junit.jupiter.api.io.TempDir dir: java.nio.file.Path) {
+        dir.resolve("xlights_networks.xml").toFile().writeText("""
+            <Networks><Controller Name="Octa7" IP="1.2.3.4"><network MaxChannels="90"/></Controller></Networks>
+        """.trimIndent())
+        // Entries are node,row,col: 3 nodes laid out up to column 89 / row 40.
+        dir.resolve("xlights_rgbeffects.xml").toFile().writeText("""
+            <xrgb><models>
+              <model name="Snowflake" Controller="Octa7" StartChannel="!Octa7:1" DisplayAs="Custom"
+                     StringType="RGB Nodes" CustomModelCompressed="1,0,10;2,40,89;3,17,26"/>
+            </models></xrgb>
+        """.trimIndent())
+
+        val model = parser.parse(dir).single().models.single()
+
+        assertEquals(3 * 3, model.channelCount)
+    }
+
+    @Test
+    fun `FPP is recognised from the xLights vendor, not the controller name`(@org.junit.jupiter.api.io.TempDir dir: java.nio.file.Path) {
+        dir.resolve("xlights_networks.xml").toFile().writeText("""
+            <Networks>
+              <Controller Name="Show Brain" Vendor="FPP" Model="Player Only" IP="10.0.0.5"><network MaxChannels="0"/></Controller>
+              <Controller Name="fpp" Vendor="WLED" IP="10.0.0.6"><network MaxChannels="90"/></Controller>
+            </Networks>
+        """.trimIndent())
+        dir.resolve("xlights_rgbeffects.xml").toFile().writeText("<xrgb><models/></xrgb>")
+
+        val byName = parser.parse(dir).associateBy { it.name }
+
+        assertTrue(byName.getValue("Show Brain").isFpp)
+        assertEquals("FPP", byName.getValue("Show Brain").vendor)
+        assertFalse(byName.getValue("fpp").isFpp)
+    }
 }

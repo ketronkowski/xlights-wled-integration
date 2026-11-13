@@ -357,6 +357,13 @@ button.view-toggle.active {
   border-color: color-mix(in srgb, var(--err) 40%, transparent);
   animation: err-pulse 2.2s ease-in-out infinite;
 }
+.badge.na {
+  background: color-mix(in srgb, var(--text-dim) 12%, transparent);
+  color: var(--text-dim);
+  border-color: var(--border-strong);
+}
+.badge.na::before { background: var(--text-dim); }
+
 .badge.err::before { background: var(--err); box-shadow: 0 0 6px 0 var(--err); }
 
 @keyframes err-pulse {
@@ -469,6 +476,9 @@ button.list-sort-btn:hover:not(:disabled) { color: var(--text-dim); background: 
 }
 
 .list-ip { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-dim); }
+
+.ip-link { color: inherit; text-decoration: underline dotted; text-underline-offset: 2px; }
+.ip-link:hover, .ip-link:focus-visible { color: var(--accent); text-decoration-style: solid; }
 
 .list-view .empty-hint { border: none; padding: 1.5rem 0.9rem; margin: 0; }
 
@@ -653,3 +663,9 @@ button.list-sort-btn:hover:not(:disabled) { color: var(--text-dim); background: 
    [hidden] { display: none } regardless of specificity (origin wins) — see
    the .card-grid[hidden]/.list-view[hidden] precedent earlier in this file. */
 .done-footer[hidden] { display: none; }
+
+.tagline-link { color: var(--accent); text-decoration: none; }
+.tagline-link:hover { text-decoration: underline; }
+
+/* App version and build commit, filled in by version.js */
+.app-version { text-align: center; color: var(--text-dim); font-family: var(--font-mono); font-size: 0.75rem; padding: 1.5rem 0 1rem; }

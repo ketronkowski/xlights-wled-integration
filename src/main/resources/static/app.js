@@ -145,11 +145,16 @@ async function loadUploadStatus() {
     const res = await fetch('api/upload/status');
     if (res.status === 404) {
       uploadStatusEl.textContent = 'No upload yet.';
+      folderLabelEl.textContent = '';
       return false;
     }
     if (!res.ok) throw new Error(String(res.status));
     const status = await res.json();
     uploadStatusEl.textContent = `Last uploaded: ${status.folderLabel} · ${timeAgo(status.uploadedAt)}`;
+    // Restore the picker's folder label from the persisted upload so a page
+    // refresh doesn't make it look like the chosen show folder was forgotten
+    // — the underlying config is already on disk, this just reflects that.
+    folderLabelEl.textContent = `${status.folderLabel} (uploaded)`;
     return true;
   } catch (err) {
     uploadStatusEl.textContent = `Could not load upload status (${err.message})`;
@@ -349,7 +354,7 @@ function buildRowModel() {
     return {
       kind: 'paired', raw: cv, name, ip, reachable, selectable: reachable,
       reachableText: reach.text, reachableCls: reach.cls, reachableCategory: reachable ? 'reachable' : 'unreachable',
-      syncText: sync ? sync.text : '', syncCls: sync ? sync.cls : '', syncCategory: sync ? (sync.cls === 'ok' ? 'in-sync' : 'needs-update') : '',
+      syncText: sync ? sync.text : '', syncCls: sync ? sync.cls : '', syncTitle: sync ? sync.title : '', syncCategory: sync ? (sync.cls === 'ok' ? 'in-sync' : 'needs-update') : '',
       backupText: backup.text, backupCls: backup.cls, backupCategory: backup.cls === 'ok' ? 'backed-up' : 'never-backed-up',
     };
   });
@@ -361,12 +366,38 @@ function buildRowModel() {
       // backend successfully fetched live data from it.
       kind: 'unpaired', raw: dev, name: dev.name, ip: dev.ipAddress, reachable: true, selectable: true,
       reachableText: '', reachableCls: '', reachableCategory: 'reachable',
-      syncText: '', syncCls: '', syncCategory: '',
+      syncText: '', syncCls: '', syncTitle: '', syncCategory: '',
       backupText: backup.text, backupCls: backup.cls, backupCategory: backup.cls === 'ok' ? 'backed-up' : 'never-backed-up',
     };
   });
 
-  return [...paired, ...unpaired];
+  const show = (report.showControllers || []).map(sc => {
+    const access = fppAccessBadge(sc);
+    return {
+      // FPP show controllers: reachability only. They have no WLED segments to
+      // sync and no WLED config to back up, so they can't be selected for those.
+      kind: 'fpp', raw: sc, name: sc.name, ip: sc.ipAddress || '', reachable: sc.access === 'REACHABLE', selectable: false,
+      reachableText: access.text, reachableCls: access.cls, reachableTitle: access.title,
+      reachableCategory: sc.access === 'REACHABLE' ? 'reachable' : 'unreachable',
+      syncText: 'FPP show controller', syncCls: 'na', syncTitle: sc.version ? `FPP ${sc.version}` : '', syncCategory: 'n/a',
+      backupText: 'Backup N/A', backupCls: 'na', backupCategory: 'n/a',
+    };
+  });
+
+  return [...paired, ...unpaired, ...show];
+}
+
+const FPP_ACCESS_BADGE = {
+  REACHABLE:     { cls: 'ok',   text: 'Reachable' },
+  AUTH_REQUIRED: { cls: 'warn', text: 'Needs credentials', hint: 'FPP asks for a password. Set FPP_PASSWORD (and FPP_USERNAME if not admin) on the server.' },
+  AUTH_FAILED:   { cls: 'err',  text: 'Credentials rejected', hint: 'FPP rejected the configured FPP_USERNAME / FPP_PASSWORD.' },
+  UNREACHABLE:   { cls: 'err',  text: 'Unreachable' },
+};
+
+function fppAccessBadge(sc) {
+  const b = FPP_ACCESS_BADGE[sc.access] || FPP_ACCESS_BADGE.UNREACHABLE;
+  const title = [b.hint, sc.access === 'REACHABLE' && sc.version ? `FPP ${sc.version}` : sc.error].filter(Boolean).join('\n');
+  return { cls: b.cls, text: b.text, title };
 }
 
 // ── Card rendering ───────────────────────────────────────────────────────
@@ -386,13 +417,40 @@ function reachBadge(reachable) {
   return reachable ? { cls: 'ok', text: 'Reachable' } : { cls: 'err', text: 'Unreachable' };
 }
 
+const SEGMENT_STATUS_TEXT = {
+  MISSING: 'missing on WLED',
+  RANGE_MISMATCH: 'wrong pixel range',
+  NULL_NOT_OFF: 'null model not turned off',
+};
+
+// Badge text separates segment problems (which Update fixes) from an LED-count
+// mismatch (a WLED LED Preferences setting that Update does not touch). The full
+// per-segment breakdown goes in the badge's tooltip.
 function syncBadge(cv) {
-  const issues = cv.segmentValidations.filter(sv => sv.status !== 'OK').length
-    + (cv.orphanSegments ? cv.orphanSegments.length : 0)
-    + (cv.totalLedsMatch ? 0 : 1);
-  return issues === 0
-    ? { cls: 'ok', text: 'In sync' }
-    : { cls: 'warn', text: `${issues} segment${issues === 1 ? '' : 's'} need update` };
+  const details = [];
+  cv.segmentValidations.filter(sv => sv.status !== 'OK').forEach(sv => {
+    let line = `${sv.model.name}: ${SEGMENT_STATUS_TEXT[sv.status] || sv.status}`;
+    if (sv.status === 'RANGE_MISMATCH' && sv.actualSegment) {
+      line += ` (WLED ${sv.actualSegment.start}-${sv.actualSegment.stop}, xLights ${sv.expectedPixelStart}-${sv.expectedPixelStop})`;
+    }
+    details.push(line);
+  });
+  (cv.orphanSegments || []).forEach(seg =>
+    details.push(`WLED segment ${seg.id}${seg.name ? ` "${seg.name}"` : ''}: no matching xLights model`));
+  const segIssues = details.length;
+
+  if (!cv.totalLedsMatch && cv.wledDevice) {
+    details.push(`LED count: WLED has ${cv.wledDevice.totalLeds}, xLights expects ${cv.expectedTotalLeds} ` +
+      '(change in WLED LED Preferences; Update does not change this)');
+  }
+  if (cv.segmentLimitWarning) details.push(cv.segmentLimitWarning);
+
+  const parts = [];
+  if (segIssues > 0) parts.push(`${segIssues} segment${segIssues === 1 ? '' : 's'} need update`);
+  if (!cv.totalLedsMatch) parts.push('LED count differs');
+  return parts.length === 0
+    ? { cls: 'ok', text: 'In sync', title: '' }
+    : { cls: 'warn', text: parts.join(' · '), title: details.join('\n') };
 }
 
 function latestBackupFor(controllerName) {
@@ -406,25 +464,33 @@ function backupBadge(controllerName) {
     : { cls: 'warn', text: 'Never backed up' };
 }
 
-function buildCard(row) {
-  const { name, ip, reachable, reachableText, reachableCls, syncText, syncCls, backupText, backupCls, kind } = row;
-  const ipDisplay = kind === 'unpaired' ? `${ip} · not in xLights config` : (ip || 'no address');
+// The controller's address, rendered as a link that opens its WLED web UI in
+// a new tab. Unreachable controllers still get a link: the address comes from
+// the xLights config, and the browser may reach it even when the server can't.
+function ipHtml(ip, kind) {
+  if (!ip) return 'no address';
+  const link = `<a class="ip-link" href="http://${escapeHtml(encodeURI(ip))}/" target="_blank" rel="noopener noreferrer" title="Open the WLED UI for ${escapeHtml(ip)}">${escapeHtml(ip)}</a>`;
+  if (kind === 'unpaired') return `${link} · not in xLights config`;
+  return link;
+}
 
+function buildCard(row) {
+  const { name, ip, reachable, reachableText, reachableCls, reachableTitle, syncText, syncCls, syncTitle, backupText, backupCls, kind } = row;
   const card = document.createElement('div');
   card.className = 'card';
   card.innerHTML = `
     <div class="card-header">
       <div>
         <span class="card-title">${escapeHtml(name)}</span>
-        <span class="card-ip">${escapeHtml(ipDisplay)}</span>
+        <span class="card-ip">${ipHtml(ip, kind)}</span>
       </div>
       <label class="card-select">
-        <input type="checkbox" class="select-box" ${reachable ? '' : 'disabled'} />
+        <input type="checkbox" class="select-box" ${row.selectable ? '' : 'disabled'} />
       </label>
     </div>
     <div class="badges">
-      ${reachableText ? `<span class="badge ${reachableCls}">${escapeHtml(reachableText)}</span>` : ''}
-      ${syncText ? `<span class="badge ${syncCls}">${escapeHtml(syncText)}</span>` : ''}
+      ${reachableText ? `<span class="badge ${reachableCls}" title="${escapeHtml(reachableTitle || '')}">${escapeHtml(reachableText)}</span>` : ''}
+      ${syncText ? `<span class="badge ${syncCls}" title="${escapeHtml(syncTitle)}">${escapeHtml(syncText)}</span>` : ''}
       <span class="badge ${backupCls}">${escapeHtml(backupText)}</span>
     </div>
   `;
@@ -501,19 +567,17 @@ function renderList(rows) {
 }
 
 function buildListRow(row) {
-  const { name, reachable, reachableText, reachableCls, syncText, syncCls, backupText, backupCls, kind, ip } = row;
-  const ipDisplay = kind === 'unpaired' ? `${ip} · not in xLights config` : (ip || 'no address');
-
+  const { name, reachable, reachableText, reachableCls, reachableTitle, syncText, syncCls, syncTitle, backupText, backupCls, kind, ip } = row;
   const el = document.createElement('div');
   el.className = 'list-row';
   el.innerHTML = `
     <label class="list-select">
-      <input type="checkbox" class="select-box" ${reachable ? '' : 'disabled'} />
+      <input type="checkbox" class="select-box" ${row.selectable ? '' : 'disabled'} />
     </label>
     <span class="list-name">${escapeHtml(name)}</span>
-    <span class="list-ip">${escapeHtml(ipDisplay)}</span>
-    ${reachableText ? `<span class="badge ${reachableCls}">${escapeHtml(reachableText)}</span>` : '<span></span>'}
-    ${syncText ? `<span class="badge ${syncCls}">${escapeHtml(syncText)}</span>` : '<span></span>'}
+    <span class="list-ip">${ipHtml(ip, kind)}</span>
+    ${reachableText ? `<span class="badge ${reachableCls}" title="${escapeHtml(reachableTitle || '')}">${escapeHtml(reachableText)}</span>` : '<span></span>'}
+    ${syncText ? `<span class="badge ${syncCls}" title="${escapeHtml(syncTitle)}">${escapeHtml(syncText)}</span>` : '<span></span>'}
     <span class="badge ${backupCls}">${escapeHtml(backupText)}</span>
   `;
 
@@ -594,6 +658,10 @@ function updateToXlights(names) {
         body: JSON.stringify({ controllers: [name] }),
       });
       if (!res.ok) throw new Error(String(res.status));
+      // /api/fix returns 200 even when the device push fails; per-controller
+      // failures are reported in updateErrors.
+      const errors = (await res.json()).updateErrors || {};
+      if (errors[name]) throw new Error(errors[name]);
     },
   });
 }
