@@ -22,7 +22,7 @@ Laid out like the WLED UI in the screenshots, top to bottom:
 | Section | Controls | WLED field |
 |---|---|---|
 | Power | On / Off toggle, Brightness slider (1–255) | `on`, `bri` |
-| Effect | Searchable list of effect names, with WLED's icons (🎨 uses palette, • uses colors) | `seg.fx` |
+| Effect | Searchable list of effect names (no icons) | `seg.fx` |
 | Effect options | Only the sliders/checkboxes the chosen effect uses, labelled with the effect's own names (e.g. "Speed", "Fade rate") | `sx`, `ix`, `c1`, `c2`, `c3`, `o1`, `o2`, `o3` |
 | Colors | Up to 3 slot buttons (1/2/3, or Fx/Bg/Cs), a color picker for the active slot, and WLED's 11 quick swatches (red, orange, amber, warm white, white, black, magenta, blue, aqua, green, random) | `seg.col[0..2]` |
 | Palette | Searchable list: Default, the `* Color 1` / `* Colors 1&2` / `* Color Gradient` / `* Colors Only` / `* Random Cycle` specials, then the named palettes. Shows "Color palette not used" when the effect ignores it | `seg.pal` |
@@ -48,8 +48,8 @@ e.g. "!,Fade rate,,,,Smear;!,!;!;1;sx=24,pal=50"
 - `palette`: empty = palette not used; `!` = used.
 - `flags`: `1` 1D, `2` 2D, `v`/`f` audio-reactive. **Effects whose flags
   contain `2` but not `1` (2D-only) are hidden** (same test as WLED's UI uses
-  when there's no matrix). Audio-reactive effects stay; without a mic they run
-  on WLED's simulated sound.
+  when there's no matrix). Audio-reactive effects (flags `v`/`f`) are hidden
+  too (Kevin, 2026-11-13).
 - `defaults`: `sx=24,pal=50`-style values to pre-fill when the effect is picked.
 - An effect with an empty string (e.g. Solid on some builds) shows speed +
   intensity for ids < 128, all 3 color slots labelled 1/2/3, and the palette.

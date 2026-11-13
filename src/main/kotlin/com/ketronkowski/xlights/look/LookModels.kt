@@ -42,7 +42,7 @@ data class CatalogEffect(
 )
 
 data class LookCatalog(
-    /** Effects every reachable controller has: Solid first, then alphabetical. 2D-only effects left out. */
+    /** Effects every reachable controller has: Solid first, then alphabetical. 2D-only and audio-reactive effects left out. */
     val effects: List<CatalogEffect>,
     /** Palettes every reachable controller has: Default, the "* ..." specials, then alphabetical. */
     val palettes: List<String>,

@@ -1075,22 +1075,13 @@ function renderLookPower() {
   lookEls.lookBri.disabled = !lookState.on;
 }
 
-function effectIcons(controls) {
-  let icons = '';
-  if (controls.usesPalette) icons += ' 🎨';
-  if (controls.flags.includes('0')) icons += ' •';
-  if (controls.flags.includes('v')) icons += ' ♪';
-  if (controls.flags.includes('f')) icons += ' ♫';
-  return icons;
-}
-
-function lookListItem(label, icons, isSelected, onPick) {
+function lookListItem(label, isSelected, onPick) {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = 'look-item' + (isSelected ? ' selected' : '');
   b.setAttribute('role', 'option');
   b.setAttribute('aria-selected', String(isSelected));
-  b.innerHTML = `<span>${escapeHtml(label)}</span>${icons ? `<span class="look-item-icons">${escapeHtml(icons)}</span>` : ''}`;
+  b.textContent = label;
   b.addEventListener('click', onPick);
   return b;
 }
@@ -1107,7 +1098,7 @@ function renderLookEffects() {
   if (names.length === 0) list.innerHTML = '<p class="look-unused">No matching effects</p>';
   names.forEach(name => {
     const fx = lookCatalog.effects.find(e => e.name === name);
-    list.appendChild(lookListItem(name, effectIcons(fx.controls), name === lookState.fx, () => pickEffect(fx)));
+    list.appendChild(lookListItem(name, name === lookState.fx, () => pickEffect(fx)));
   });
   const sel = list.querySelector('.selected');
   if (sel) sel.scrollIntoView({ block: 'nearest' });
@@ -1201,7 +1192,7 @@ function renderLookPalettes() {
   list.innerHTML = '';
   const names = filterByQuery(lookCatalog.palettes, lookEls.lookPalSearch.value);
   if (names.length === 0) list.innerHTML = '<p class="look-unused">No matching palettes</p>';
-  names.forEach(name => list.appendChild(lookListItem(name, '', name === lookState.pal, () => {
+  names.forEach(name => list.appendChild(lookListItem(name, name === lookState.pal, () => {
     lookState.pal = name;
     renderLookPalettes();
     renderLookColors();

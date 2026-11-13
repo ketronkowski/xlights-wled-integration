@@ -22,6 +22,9 @@ data class EffectControls(
 ) {
     /** 2D-only effects need a matrix; WLED hides them on strips and so do we. */
     val is2dOnly: Boolean get() = flags.contains('2') && !flags.contains('1')
+
+    /** Audio-reactive effects (volume `v` or frequency `f`); not offered, there's no mic. */
+    val isAudioReactive: Boolean get() = flags.contains('v') || flags.contains('f')
 }
 
 /**

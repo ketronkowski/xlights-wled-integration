@@ -93,7 +93,7 @@ class LookService(
         val list = first.effects.mapIndexedNotNull { id, name ->
             if (name !in shared || name.isBlank() || name.contains("RSVD")) return@mapIndexedNotNull null
             val controls = EffectControlsParser.parse(id, first.fxData.getOrElse(id) { "" })
-            if (controls.is2dOnly) return@mapIndexedNotNull null
+            if (controls.is2dOnly || controls.isAudioReactive) return@mapIndexedNotNull null
             CatalogEffect(name, controls, controls.defaults["pal"]?.let { first.palettes.getOrNull(it) })
         }.distinctBy { it.name }
         val (solid, rest) = list.partition { it.name == first.effects.firstOrNull() }

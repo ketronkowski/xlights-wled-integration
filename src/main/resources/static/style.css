@@ -806,7 +806,6 @@ button.list-sort-btn:hover:not(:disabled) { color: var(--text-dim); background: 
 
 .look-item:hover:not(:disabled) { transform: none; background: var(--bg-elevated-hover); }
 .look-item.selected { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-.look-item-icons { color: var(--text-dim); }
 
 .look-unused {
   font-family: var(--font-mono);

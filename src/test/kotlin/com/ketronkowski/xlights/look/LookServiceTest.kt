@@ -39,9 +39,9 @@ class LookServiceTest {
         orphanSegments = emptyList(),
     )
     private val catalog = ControllerCatalog(
-        effects  = listOf("Solid", "Blink", "Chase 3", "RSVD", "Black Hole"),
+        effects  = listOf("Solid", "Blink", "Chase 3", "RSVD", "Black Hole", "Gravimeter"),
         palettes = listOf("Default", "* Random Cycle", "* Color 1", "Party", "Ocean"),
-        fxData   = listOf("", "!,Duty cycle;!,!;!;01", "!,Size;!,!,!;!", "", "!,!;;;2"),
+        fxData   = listOf("", "!,Duty cycle;!,!;!;01", "!,Size;!,!,!;!", "", "!,!;;;2", "Rate of fall,Sensitivity;!,!;!;1v;ix=128"),
     )
 
     private val apiClient = mock<WledApiClient>()
@@ -118,8 +118,8 @@ class LookServiceTest {
     }
 
     @Test
-    fun `common effects drop RSVD and 2D-only, Solid first then alphabetical`() {
-        val other = catalog.copy(effects = listOf("Solid", "Chase 3", "Blink"))
+    fun `common effects drop RSVD, 2D-only and audio-reactive, Solid first then alphabetical`() {
+        val other = catalog.copy(effects = listOf("Solid", "Chase 3", "Blink", "RSVD", "Black Hole", "Gravimeter"))
         val names = service.commonEffects(listOf(catalog, other)).map { it.name }
         assertEquals(listOf("Solid", "Blink", "Chase 3"), names)
     }
