@@ -8,6 +8,7 @@ data class WledInfoResponse(
     val name: String = "",
     val ver: String = "",
     val leds: WledLedsInfo = WledLedsInfo(),
+    val live: Boolean = false,   // true while the controller is receiving realtime (show) data
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -21,6 +22,7 @@ data class WledLedsInfo(
 data class WledStateResponse(
     val on: Boolean = true,
     val bri: Int = 128,
+    val mainseg: Int = 0,
     val seg: List<WledSegmentDto> = emptyList(),
 )
 
@@ -31,6 +33,18 @@ data class WledSegmentDto(
     val start: Int = 0,
     val stop: Int = 0,
     val on: Boolean = true,
+    // Effect settings, read to pre-fill the Set Look dialog.
+    val fx: Int = 0,
+    val sx: Int = 128,
+    val ix: Int = 128,
+    val pal: Int = 0,
+    val c1: Int = 128,
+    val c2: Int = 128,
+    val c3: Int = 16,
+    val o1: Boolean = false,
+    val o2: Boolean = false,
+    val o3: Boolean = false,
+    val col: List<List<Int>> = emptyList(),
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)

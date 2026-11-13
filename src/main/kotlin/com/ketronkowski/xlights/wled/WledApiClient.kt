@@ -60,6 +60,27 @@ class WledApiClient(
             .toBodilessEntity()
     }
 
+    fun fetchInfo(ip: String): WledInfoResponse = get(ip, "/json/info", WledInfoResponse::class.java)
+
+    /** Effect names, indexed by effect id. */
+    fun fetchEffects(ip: String): List<String> = getStringList(ip, "/json/effects")
+
+    /** Palette names, indexed by palette id. */
+    fun fetchPalettes(ip: String): List<String> = getStringList(ip, "/json/palettes")
+
+    /**
+     * Per-effect control metadata, indexed by effect id. WLED strips the effect name
+     * and the '@' before sending, so each entry is `sliders;colors;palette;flags;defaults`.
+     */
+    fun fetchFxData(ip: String): List<String> = getStringList(ip, "/json/fxdata")
+
+    private fun getStringList(ip: String, path: String): List<String> =
+        restClient.get()
+            .uri("http://$ip$path")
+            .retrieve()
+            .body<List<String>>()
+            ?: error("Empty response from $ip$path")
+
     /** Current global on/brightness, used to restore the device after a measuring session. */
     fun fetchState(ip: String): WledStateResponse = get(ip, "/json/state", WledStateResponse::class.java)
 

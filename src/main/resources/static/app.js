@@ -11,6 +11,7 @@ const selectNoneBtn = document.getElementById('selectNoneBtn');
 const backupSelectedBtn = document.getElementById('backupSelectedBtn');
 const restoreSelectedBtn = document.getElementById('restoreSelectedBtn');
 const updateSelectedBtn = document.getElementById('updateSelectedBtn');
+const setLookBtn = document.getElementById('setLookBtn');
 const summaryLine = document.getElementById('summaryLine');
 const cardGrid = document.getElementById('cardGrid');
 const listGrid = document.getElementById('listGrid');
@@ -45,7 +46,7 @@ const progressContinueBtn = document.getElementById('progressContinueBtn');
 const progressDoneFooter = document.getElementById('progressDoneFooter');
 const progressDoneSummary = document.getElementById('progressDoneSummary');
 const progressCloseBtn = document.getElementById('progressCloseBtn');
-const BULK_TRIGGER_BUTTONS = [backupSelectedBtn, restoreSelectedBtn, updateSelectedBtn, clearAllBtn];
+const BULK_TRIGGER_BUTTONS = [backupSelectedBtn, restoreSelectedBtn, updateSelectedBtn, setLookBtn, clearAllBtn];
 
 let report = null;          // last ValidationReport
 let backups = [];           // last WledBackupRecord[]
@@ -84,6 +85,21 @@ let showSelectedOnly = false;
 const VIEW_STORAGE_KEY = 'xlights-wled-view';
 let currentView = localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'card';
 
+// Set Look dialog state (see the Set Look section below).
+const lookEls = {};
+let lookCatalog = null;   // LookCatalog from api/look/catalog
+let lookState = null;     // Look being edited: { on, bri, fx, sx, ix, c1, c2, c3, o1, o2, o3, pal, col }
+let lookTargets = [];     // [{ name, ip }]
+let lookSlot = 0;         // active color slot
+
+// WLED's quick color swatches (wled00/data/index.htm), plus Random.
+const LOOK_SWATCHES = ['#ff0000', '#ffa000', '#ffc800', '#ffe0a0', '#ffffff', '#000000',
+  '#ff00ff', '#0000ff', '#00ffc8', '#08ff00'];
+const LOOK_SLIDER_DEFAULTS = { sx: 128, ix: 128, c1: 128, c2: 128, c3: 16 };
+// "* Color" palettes are built from the color slots, so picking one shows those
+// slots even when the effect hides them (WLED updateSelectedPalette, ids 2–5).
+const LOOK_PALETTE_SLOTS = { '* Color 1': 1, '* Colors 1&2': 2, '* Color Gradient': 3, '* Colors Only': 3 };
+
 init();
 
 function init() {
@@ -96,6 +112,8 @@ function init() {
   backupSelectedBtn.addEventListener('click', backupSelected);
   restoreSelectedBtn.addEventListener('click', restoreSelected);
   updateSelectedBtn.addEventListener('click', () => updateToXlights([...selected]));
+  setLookBtn.addEventListener('click', openLookModal);
+  initLookModal();
   clearAllBtn.addEventListener('click', openClearAllModal);
   clearAllCancelBtn.addEventListener('click', closeClearAllModal);
   clearAllConfirmInput.addEventListener('input', () => {
@@ -618,6 +636,11 @@ function updateBulkButtons() {
   backupSelectedBtn.disabled = !has;
   restoreSelectedBtn.disabled = !has;
   updateSelectedBtn.disabled = !has;
+  const blockers = setLookBlockers();
+  setLookBtn.disabled = !has || blockers.length > 0;
+  setLookBtn.title = has && blockers.length > 0
+    ? 'Every selected controller must be paired with xLights and in sync first:\n' + blockers.join('\n')
+    : '';
   updateSelectionSummary();
 }
 
@@ -907,6 +930,328 @@ async function resetUiToPreUploadState() {
   cardGrid.innerHTML = hint;
   listGrid.innerHTML = hint;
   updateBulkButtons();
+}
+
+// ── Set Look ─────────────────────────────────────────────────────────────
+//
+// Puts one effect/colors/palette on every selected controller at the same
+// moment. Meant for outside show hours: the backend never overrides live show
+// data. Nothing is sent until Apply, and Apply always sends the whole look.
+// Only controllers that are paired with xLights and fully in sync (segments and
+// LED count) can be used, since the backend targets segments by xLights model.
+
+function initLookModal() {
+  ['lookModal', 'lookTargets', 'lookNotice', 'lookLoading', 'lookBody', 'lookOn', 'lookOnLabel', 'lookBri',
+    'lookBriVal', 'lookFxSearch', 'lookFxList', 'lookOpts', 'lookColors', 'lookSlots', 'lookColor',
+    'lookSwatches', 'lookColorsUnused', 'lookPalLabel', 'lookPalWrap', 'lookPalSearch', 'lookPalList',
+    'lookPalUnused', 'lookRefreshBtn', 'lookCloseBtn', 'lookApplyBtn'].forEach(id => { lookEls[id] = document.getElementById(id); });
+
+  lookEls.lookCloseBtn.addEventListener('click', () => { lookEls.lookModal.hidden = true; });
+  lookEls.lookRefreshBtn.addEventListener('click', () => loadLookCatalog(true));
+  lookEls.lookApplyBtn.addEventListener('click', applyLook);
+  lookEls.lookOn.addEventListener('change', () => { lookState.on = lookEls.lookOn.checked; renderLookPower(); });
+  lookEls.lookBri.addEventListener('input', () => { lookState.bri = Number(lookEls.lookBri.value); renderLookPower(); });
+  lookEls.lookFxSearch.addEventListener('input', renderLookEffects);
+  lookEls.lookPalSearch.addEventListener('input', renderLookPalettes);
+  lookEls.lookColor.addEventListener('input', () => setLookColor(hexToRgb(lookEls.lookColor.value)));
+
+  LOOK_SWATCHES.forEach(hex => lookEls.lookSwatches.appendChild(swatchButton(hex, hex, () => setLookColor(hexToRgb(hex)))));
+  lookEls.lookSwatches.appendChild(swatchButton('Random', null, () => setLookColor(randomColor()), 'R'));
+}
+
+function swatchButton(title, hex, onClick, text) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'look-swatch' + (hex ? '' : ' random');
+  b.title = title;
+  if (hex) b.style.background = hex;
+  if (text) b.textContent = text;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+// Why each selected controller can't take a look; empty when all of them can.
+function setLookBlockers() {
+  if (!report) return [];
+  const out = [];
+  for (const name of selected) {
+    const cv = report.controllerValidations.find(c => c.xLightsController.name === name);
+    if (!cv) { out.push(`${name}: not paired with an xLights controller`); continue; }
+    if (!cv.wledDevice) { out.push(`${name}: unreachable`); continue; }
+    const sync = syncBadge(cv);
+    if (sync.cls !== 'ok') {
+      const fix = cv.totalLedsMatch ? 'run Update Selected' : 'fix the LED count in WLED LED Preferences';
+      out.push(`${name}: ${sync.text} (${fix})`);
+    }
+  }
+  return out;
+}
+
+function openLookModal() {
+  if (selected.size === 0 || setLookBlockers().length > 0) return;
+  lookTargets = [...selected].map(name => ({ name, ip: ipForController(name) }));
+  lookEls.lookTargets.textContent = `${lookTargets.length} controller${lookTargets.length === 1 ? '' : 's'}: ${lookTargets.map(t => t.name).join(', ')}`;
+  lookEls.lookFxSearch.value = '';
+  lookEls.lookPalSearch.value = '';
+  lookEls.lookModal.hidden = false;
+  loadLookCatalog(false);
+}
+
+async function loadLookCatalog(refresh) {
+  lookEls.lookBody.hidden = true;
+  lookEls.lookNotice.hidden = true;
+  lookEls.lookLoading.hidden = false;
+  lookEls.lookLoading.textContent = 'Loading effects from the controllers…';
+  lookEls.lookApplyBtn.disabled = true;
+  lookEls.lookRefreshBtn.disabled = true;
+  try {
+    const ips = lookTargets.map(t => t.ip).filter(Boolean);
+    const res = await fetch(`api/look/catalog?ips=${encodeURIComponent(ips.join(','))}${refresh ? '&refresh=true' : ''}`);
+    if (!res.ok) throw new Error(String(res.status));
+    lookCatalog = await res.json();
+  } catch (err) {
+    lookEls.lookLoading.textContent = `Could not load effects: ${err.message}`;
+    lookEls.lookRefreshBtn.disabled = false;
+    return;
+  }
+  lookEls.lookRefreshBtn.disabled = false;
+  renderLookNotice();
+  if (lookCatalog.effects.length === 0) {
+    lookEls.lookLoading.textContent = 'None of the selected controllers could be reached.';
+    return;
+  }
+  // Keep edits across a Refresh; otherwise start from what the first controller shows now.
+  const base = (refresh && lookState) ? lookState : (lookCatalog.current || {});
+  lookState = normalizeLook(base);
+  lookSlot = 0;
+  lookEls.lookLoading.hidden = true;
+  lookEls.lookBody.hidden = false;
+  lookEls.lookApplyBtn.disabled = false;
+  renderLook();
+}
+
+function normalizeLook(l) {
+  const fx = lookCatalog.effects.some(e => e.name === l.fx) ? l.fx : lookCatalog.effects[0].name;
+  const pal = lookCatalog.palettes.includes(l.pal) ? l.pal : (lookCatalog.palettes[0] || 'Default');
+  const col = [0, 1, 2].map(i => (l.col && l.col[i]) ? l.col[i].slice(0, 3) : [0, 0, 0]);
+  return {
+    on: l.on !== false, bri: clampInt(l.bri ?? 128, 1, 255), fx,
+    sx: l.sx ?? 128, ix: l.ix ?? 128, c1: l.c1 ?? 128, c2: l.c2 ?? 128, c3: l.c3 ?? 16,
+    o1: !!l.o1, o2: !!l.o2, o3: !!l.o3, pal, col,
+  };
+}
+
+function renderLookNotice() {
+  const nameFor = ip => (lookTargets.find(t => t.ip === ip) || { name: ip }).name;
+  const lines = [];
+  (lookCatalog.live || []).forEach(ip =>
+    lines.push(`${nameFor(ip)} is playing the show; the look won't show there until the show stops.`));
+  Object.entries(lookCatalog.unreachable || {}).forEach(([ip, err]) =>
+    lines.push(`Couldn't reach ${nameFor(ip)} (${err}); only effects the reachable controllers share are listed.`));
+  lookEls.lookNotice.innerHTML = lines.map(l => `<div>${escapeHtml(l)}</div>`).join('');
+  lookEls.lookNotice.hidden = lines.length === 0;
+}
+
+function currentEffect() {
+  return lookCatalog.effects.find(e => e.name === lookState.fx) || lookCatalog.effects[0];
+}
+
+function renderLook() {
+  renderLookPower();
+  renderLookEffects();
+  renderLookOptions();
+  renderLookColors();
+  renderLookPalettes();
+}
+
+function renderLookPower() {
+  lookEls.lookOn.checked = lookState.on;
+  lookEls.lookOnLabel.textContent = lookState.on ? 'On' : 'Off';
+  lookEls.lookBri.value = lookState.bri;
+  lookEls.lookBriVal.textContent = lookState.bri;
+  lookEls.lookBri.disabled = !lookState.on;
+  lookEls.lookBody.classList.toggle('look-off', !lookState.on);
+}
+
+function effectIcons(controls) {
+  let icons = '';
+  if (controls.usesPalette) icons += ' 🎨';
+  if (controls.flags.includes('0')) icons += ' •';
+  if (controls.flags.includes('v')) icons += ' ♪';
+  if (controls.flags.includes('f')) icons += ' ♫';
+  return icons;
+}
+
+function lookListItem(label, icons, isSelected, onPick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'look-item' + (isSelected ? ' selected' : '');
+  b.setAttribute('role', 'option');
+  b.setAttribute('aria-selected', String(isSelected));
+  b.innerHTML = `<span>${escapeHtml(label)}</span>${icons ? `<span class="look-item-icons">${escapeHtml(icons)}</span>` : ''}`;
+  b.addEventListener('click', onPick);
+  return b;
+}
+
+function filterByQuery(names, query) {
+  const q = query.trim().toLowerCase();
+  return q ? names.filter(n => n.toLowerCase().includes(q)) : names;
+}
+
+function renderLookEffects() {
+  const list = lookEls.lookFxList;
+  list.innerHTML = '';
+  const names = filterByQuery(lookCatalog.effects.map(e => e.name), lookEls.lookFxSearch.value);
+  if (names.length === 0) list.innerHTML = '<p class="look-unused">No matching effects</p>';
+  names.forEach(name => {
+    const fx = lookCatalog.effects.find(e => e.name === name);
+    list.appendChild(lookListItem(name, effectIcons(fx.controls), name === lookState.fx, () => pickEffect(fx)));
+  });
+  const sel = list.querySelector('.selected');
+  if (sel) sel.scrollIntoView({ block: 'nearest' });
+}
+
+// Like WLED with "effect defaults" on: picking an effect resets its options to
+// the firmware defaults, then applies the effect's own defaults from fxdata.
+function pickEffect(fx) {
+  lookState.fx = fx.name;
+  Object.assign(lookState, LOOK_SLIDER_DEFAULTS, { o1: false, o2: false, o3: false });
+  Object.entries(fx.controls.defaults || {}).forEach(([k, v]) => {
+    if (k in LOOK_SLIDER_DEFAULTS) lookState[k] = v;
+    else if (k === 'o1' || k === 'o2' || k === 'o3') lookState[k] = !!v;
+  });
+  if (fx.defaultPalette && lookCatalog.palettes.includes(fx.defaultPalette)) lookState.pal = fx.defaultPalette;
+  renderLook();
+}
+
+function renderLookOptions() {
+  const { controls } = currentEffect();
+  const wrap = lookEls.lookOpts;
+  wrap.innerHTML = '';
+  if (controls.sliders.length === 0 && controls.checkboxes.length === 0) {
+    wrap.innerHTML = '<p class="look-unused">This effect has no options</p>';
+    return;
+  }
+  controls.sliders.forEach(({ key, label }) => {
+    const row = document.createElement('label');
+    row.className = 'look-slider';
+    row.innerHTML = `<span class="look-slider-label">${escapeHtml(label)}</span>` +
+      `<input type="range" min="0" max="${key === 'c3' ? 31 : 255}" value="${Number(lookState[key])}" />` +
+      `<output class="look-slider-value">${Number(lookState[key])}</output>`;
+    const input = row.querySelector('input');
+    const out = row.querySelector('output');
+    input.addEventListener('input', () => { lookState[key] = Number(input.value); out.textContent = input.value; });
+    wrap.appendChild(row);
+  });
+  controls.checkboxes.forEach(({ key, label }) => {
+    const row = document.createElement('label');
+    row.className = 'look-check';
+    row.innerHTML = `<input type="checkbox" ${lookState[key] ? 'checked' : ''} /> <span>${escapeHtml(label)}</span>`;
+    row.querySelector('input').addEventListener('change', e => { lookState[key] = e.target.checked; });
+    wrap.appendChild(row);
+  });
+}
+
+// Slot labels for the current effect, with "* Color" palettes force-showing
+// the slots they're built from. null = slot hidden.
+function visibleSlots() {
+  const { controls } = currentEffect();
+  const slots = controls.colors.slice();
+  const forced = controls.usesPalette ? (LOOK_PALETTE_SLOTS[lookState.pal] || 0) : 0;
+  for (let i = 0; i < forced; i++) if (slots[i] == null) slots[i] = String(i + 1);
+  return slots;
+}
+
+function renderLookColors() {
+  const slots = visibleSlots();
+  const any = slots.some(s => s != null);
+  lookEls.lookColors.hidden = !any;
+  lookEls.lookColorsUnused.hidden = any;
+  if (!any) return;
+  if (slots[lookSlot] == null) lookSlot = slots.findIndex(s => s != null);
+
+  lookEls.lookSlots.innerHTML = '';
+  slots.forEach((label, i) => {
+    if (label == null) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'look-slot' + (i === lookSlot ? ' active' : '');
+    b.title = `Color slot ${i + 1}`;
+    b.innerHTML = `<span class="look-slot-chip" style="background:${rgbToHex(lookState.col[i])}"></span><span>${escapeHtml(label)}</span>`;
+    b.addEventListener('click', () => { lookSlot = i; renderLookColors(); });
+    lookEls.lookSlots.appendChild(b);
+  });
+  lookEls.lookColor.value = rgbToHex(lookState.col[lookSlot]);
+}
+
+function setLookColor(rgb) {
+  lookState.col[lookSlot] = rgb;
+  renderLookColors();
+}
+
+function renderLookPalettes() {
+  const { controls } = currentEffect();
+  lookEls.lookPalLabel.textContent = controls.paletteLabel || 'Color palette';
+  lookEls.lookPalWrap.hidden = !controls.usesPalette;
+  lookEls.lookPalUnused.hidden = controls.usesPalette;
+  if (!controls.usesPalette) return;
+  const list = lookEls.lookPalList;
+  list.innerHTML = '';
+  const names = filterByQuery(lookCatalog.palettes, lookEls.lookPalSearch.value);
+  if (names.length === 0) list.innerHTML = '<p class="look-unused">No matching palettes</p>';
+  names.forEach(name => list.appendChild(lookListItem(name, '', name === lookState.pal, () => {
+    lookState.pal = name;
+    renderLookPalettes();
+    renderLookColors();
+  })));
+  const sel = list.querySelector('.selected');
+  if (sel) sel.scrollIntoView({ block: 'nearest' });
+}
+
+function applyLook() {
+  const look = { ...lookState, col: lookState.col.map(c => c.slice()) };
+  const targets = lookTargets.slice();
+  runAtomicBulk({
+    title: look.on ? `Setting Look: ${look.fx}` : 'Turning Controllers Off',
+    request: async () => {
+      const res = await fetch('api/look/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ controllers: targets, look }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      return res.json();
+    },
+    mapResult: outcomes => {
+      const items = outcomes.map(o => ({
+        name: o.name,
+        status: o.success ? 'success' : 'failed',
+        detail: o.success ? null : (o.error || 'unknown error'),
+      }));
+      const ok = outcomes.filter(o => o.success).length;
+      return { items, summary: `${ok}/${outcomes.length} controller(s) set` };
+    },
+    // The dialog stays open underneath so the look can be tweaked and re-applied.
+  });
+}
+
+function clampInt(v, lo, hi) { return Math.max(lo, Math.min(hi, Math.round(Number(v) || 0))); }
+
+function rgbToHex(rgb) {
+  return '#' + (rgb || [0, 0, 0]).slice(0, 3).map(v => clampInt(v, 0, 255).toString(16).padStart(2, '0')).join('');
+}
+
+function hexToRgb(hex) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+// Same idea as WLED's random swatch: a random fully saturated hue. Picked here,
+// once, so every controller gets the same color.
+function randomColor() {
+  const h = Math.random() * 6;
+  const x = Math.round(255 * (1 - Math.abs((h % 2) - 1)));
+  return [[255, x, 0], [x, 255, 0], [0, 255, x], [0, x, 255], [x, 0, 255], [255, 0, x]][Math.floor(h)];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
