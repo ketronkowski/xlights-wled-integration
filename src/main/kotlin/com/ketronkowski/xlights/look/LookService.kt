@@ -77,8 +77,21 @@ class LookService(
             current     = current,
             live        = reachable.filter { it.info?.live == true }.map { it.ip },
             powered     = reachable.associate { it.ip to (it.state?.on ?: false) },
+            differing   = differingLooks(reachable.map { Triple(it.ip, it.state!!, it.catalog!!) }),
             unreachable = unreachable,
         )
+    }
+
+    /**
+     * Which controllers aren't showing the same look as the first one. Compared by
+     * name in each controller's own lists, ignoring power and brightness.
+     */
+    internal fun differingLooks(controllers: List<Triple<String, WledStateResponse, ControllerCatalog>>): Map<String, String> {
+        val looks = controllers.map { (ip, state, cat) ->
+            ip to currentLook(state, cat, cat.effects.toSet(), cat.palettes.toSet()).copy(on = true, bri = 0)
+        }
+        val first = looks.firstOrNull()?.second ?: return emptyMap()
+        return looks.drop(1).filter { it.second != first }.associate { (ip, look) -> ip to look.fx }
     }
 
     private fun controllerCatalog(ip: String): ControllerCatalog =

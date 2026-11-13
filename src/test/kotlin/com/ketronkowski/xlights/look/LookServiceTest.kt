@@ -3,6 +3,8 @@ package com.ketronkowski.xlights.look
 import com.ketronkowski.xlights.domain.*
 import com.ketronkowski.xlights.validation.ValidationService
 import com.ketronkowski.xlights.wled.WledApiClient
+import com.ketronkowski.xlights.wled.dto.WledSegmentDto
+import com.ketronkowski.xlights.wled.dto.WledStateResponse
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -105,6 +107,19 @@ class LookServiceTest {
         assertTrue(out[0].success)
         assertFalse(out[1].success)
         assertEquals("timeout", out[1].error)
+    }
+
+    @Test
+    fun `differing looks lists controllers whose effect or settings differ from the first`() {
+        fun state(fx: Int, sx: Int = 128, on: Boolean = true, bri: Int = 128) = WledStateResponse(
+            on = on, bri = bri, seg = listOf(WledSegmentDto(id = 0, fx = fx, sx = sx, col = listOf(listOf(255, 0, 0)))))
+        val out = service.differingLooks(listOf(
+            Triple("a", state(2), catalog),
+            Triple("b", state(2, on = false, bri = 10), catalog),   // same look, only power/brightness differ
+            Triple("c", state(1), catalog),                         // different effect
+            Triple("d", state(2, sx = 5), catalog),                 // same effect, different speed
+        ))
+        assertEquals(mapOf("c" to "Blink", "d" to "Chase 3"), out)
     }
 
     @Test

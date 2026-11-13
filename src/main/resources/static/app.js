@@ -1054,6 +1054,13 @@ function renderLookNotice() {
   const lines = [];
   (lookCatalog.live || []).forEach(ip =>
     lines.push(`${nameFor(ip)} is playing the show; the look won't show there until the show stops.`));
+  const differing = Object.entries(lookCatalog.differing || {});
+  if (differing.length && lookCatalog.current) {
+    const firstIp = lookTargets.map(t => t.ip).find(ip => (lookCatalog.powered || {})[ip] !== undefined);
+    const others = differing.map(([ip, fx]) => `${nameFor(ip)} (${fx})`).join(', ');
+    lines.push(`These controllers aren't all showing the same look. The settings below start from ` +
+      `${nameFor(firstIp)}'s (${lookCatalog.current.fx}); different: ${others}. Apply sets them all to the same look.`);
+  }
   Object.entries(lookCatalog.unreachable || {}).forEach(([ip, err]) =>
     lines.push(`Couldn't reach ${nameFor(ip)} (${err}); only effects the reachable controllers share are listed.`));
   lookEls.lookNotice.innerHTML = lines.map(l => `<div>${escapeHtml(l)}</div>`).join('');

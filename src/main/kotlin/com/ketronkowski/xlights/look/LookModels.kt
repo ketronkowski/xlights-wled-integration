@@ -58,6 +58,12 @@ data class LookCatalog(
     val live: List<String>,
     /** ip → whether the controller's power is on right now. */
     val powered: Map<String, Boolean> = emptyMap(),
+    /**
+     * Controllers whose current look (effect, options, colors, palette; not power or
+     * brightness) isn't the same as the first controller's, which pre-fills the dialog.
+     * ip → that controller's current effect name.
+     */
+    val differing: Map<String, String> = emptyMap(),
     /** ip → why it could not be reached. */
     val unreachable: Map<String, String>,
 )
