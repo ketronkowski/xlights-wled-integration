@@ -1,6 +1,6 @@
 # Plan: "Set Look" for selected WLED controllers
 
-Status: **decisions made (see bottom), ready to build**. No code yet.
+Status: **built** (PR #28).
 
 This is for controlling the lights **outside show hours**. It never overrides a
 running show.
