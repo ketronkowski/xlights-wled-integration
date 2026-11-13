@@ -151,7 +151,8 @@ Why each field:
 
 ### Which segments
 
-The look goes on every **non-null** segment and null segments stay off.
+Only segments that match a **non-null** xLights model get the look. Every
+other segment is turned off, the same as nulls.
 "Update Selected" already names each WLED segment after its xLights model, and
 the parser already knows which models are nulls (`LayoutGroup="Nulls"` or a
 name starting with "Null"). So for each segment on the controller:
@@ -159,16 +160,26 @@ name starting with "Null"). So for each segment on the controller:
 | Segment | What Apply sends |
 |---|---|
 | Name matches a non-null xLights model | the full look, plus `on: true` |
-| Name matches a null model | `on: false` only |
-| Matches no model (orphan, or the controller isn't paired) | the full look only if the segment is currently on; otherwise left untouched |
+| Anything else (null model, or no matching model) | `on: false` only |
+
+Because the dialog only opens for in-sync controllers (below), the "no matching
+model" row shouldn't happen in practice; the backend still turns such a
+segment off rather than guessing.
 
 The whole look is always sent (effect, every option, all 3 colors, palette),
 never just the fields you changed, so every controller ends up identical.
 
 ### Frontend flow
 
-1. New toolbar button **Set Look…** (enabled when something is selected and
-   reachable), between Update Selected and Clear All.
+1. New toolbar button **Set Look…**, between Update Selected and Clear All.
+   It is enabled only when something is selected **and every selected
+   controller is paired with xLights and its segments are in sync** (no
+   segment needs an update and there are no orphan segments). Otherwise the
+   button stays disabled with a tooltip naming the controllers to fix with
+   Update Selected first. Unpaired WLED devices and FPP controllers can't be
+   used. An "LED count differs" warning on its own doesn't block it, since
+   Update Selected can't fix that. The backend re-checks the same condition on
+   Apply and rejects a controller that has drifted.
 2. Opens the dialog, calls the catalog endpoint, pre-fills from the first
    controller's main segment.
 3. **Apply** calls `/api/look/apply` and shows results in the existing progress
@@ -200,7 +211,9 @@ never just the fields you changed, so every controller ends up identical.
 
 1. **Live show data:** leave the show alone. This is for outside show hours, so
    no `lor` is sent; the dialog only warns when a controller is live.
-2. **Segments:** every non-null segment gets the look; nulls stay off.
+2. **Segments:** only segments matching a non-null xLights model get the look;
+   everything else (nulls included) is turned off. Every selected controller
+   must be in sync with xLights before the dialog opens.
 3. **Whole look:** Apply always sends the full look.
 4. **Presets:** temporary change for now; presets come in a follow-on feature.
 5. **2D effects:** hidden.
