@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/ketronkowski/xlights-wled-integration/compare/v1.0.0...v1.1.0) (2026-11-13)
+
+
+### Features
+
+* Set Look action for selected WLED controllers ([#28](https://github.com/ketronkowski/xlights-wled-integration/issues/28)) ([0f1a239](https://github.com/ketronkowski/xlights-wled-integration/commit/0f1a239f9201cd2ce6eca5f18cefcfe243422063))
+
 ## [1.0.0](https://github.com/ketronkowski/xlights-wled-integration/compare/v0.2.0...v1.0.0) (2026-11-13)
 
 
