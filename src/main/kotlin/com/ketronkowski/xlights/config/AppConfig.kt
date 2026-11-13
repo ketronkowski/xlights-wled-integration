@@ -18,7 +18,11 @@ class AppConfig {
     fun restClient(): RestClient {
         // JDK HttpClient uses the OS resolver, so .local mDNS hostnames
         // (e.g. wled-octa1.local) resolve correctly wherever mDNS is reachable.
+        // HTTP/1.1 only: the JDK client otherwise sends "Upgrade: h2c" on plain http,
+        // which FPP's web server answers by closing the connection ("EOF reached
+        // while reading"). WLED and FPP only speak HTTP/1.1 anyway.
         val httpClient = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(3))
             .build()
         val requestFactory = JdkClientHttpRequestFactory(httpClient).apply {
