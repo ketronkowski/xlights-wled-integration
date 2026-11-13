@@ -38,43 +38,101 @@ class ValidationService(
 
     // ── Fix modes ────────────────────────────────────────────────────────────
 
-    fun fix(report: ValidationReport) {
+    // Incremental update: brings each device's segments in line with xLights while
+    // leaving already-correct segments alone. Returns controller name → error message
+    // for every device that could not be updated; one device failing never stops the
+    // others from being processed.
+    //
+    // Every patch carries an explicit segment id. WLED treats an entry in a "seg"
+    // array that has no "id" as targeting the segment at that entry's array index,
+    // so id-less "create" patches silently overwrite whatever segments happen to sit
+    // at those indexes (often ones that were already correct).
+    fun fix(report: ValidationReport): Map<String, String> {
+        val errors = linkedMapOf<String, String>()
         for (cv in report.controllerValidations) {
             val device = cv.wledDevice ?: continue
-
-            if (!backupBeforeMutating(device)) continue
-
-            val patches = mutableListOf<WledSegmentPatch>()
-
-            for (sv in cv.segmentValidations) {
-                when (sv.status) {
-                    SegmentStatus.OK -> Unit
-
-                    SegmentStatus.MISSING -> patches += WledSegmentPatch(
-                        name  = sv.model.name,
-                        start = sv.expectedPixelStart,
-                        stop  = sv.expectedPixelStop,
-                        on    = !sv.model.isNull,
-                    )
-
-                    SegmentStatus.RANGE_MISMATCH -> patches += WledSegmentPatch(
-                        id    = sv.actualSegment!!.id,
-                        start = sv.expectedPixelStart,
-                        stop  = sv.expectedPixelStop,
-                    )
-
-                    SegmentStatus.NULL_NOT_OFF -> patches += WledSegmentPatch(
-                        id = sv.actualSegment!!.id,
-                        on = false,
-                    )
+            try {
+                if (!backupBeforeMutating(device)) {
+                    errors[cv.xLightsController.name] = "pre-update backup failed"
+                    continue
                 }
-            }
-
-            if (patches.isNotEmpty()) {
-                log.info("Patching {} segment(s) on '{}'", patches.size, device.ipAddress)
-                apiClient.patchState(device.ipAddress, WledStatePatch(patches))
+                val plan = planFix(cv, device)
+                if (plan.upserts.isNotEmpty()) {
+                    log.info("Patching {} segment(s) on '{}'", plan.upserts.size, device.ipAddress)
+                    apiClient.patchState(device.ipAddress, WledStatePatch(plan.upserts))
+                }
+                // Deletions go last, in their own request, highest id first: WLED may
+                // purge deleted segments and renumber the ones after them, which must
+                // not shift the ids the upserts above were addressed to.
+                if (plan.deletions.isNotEmpty()) {
+                    log.info("Deleting {} orphan segment(s) on '{}'", plan.deletions.size, device.ipAddress)
+                    apiClient.patchState(device.ipAddress, WledStatePatch(plan.deletions))
+                }
+                if (plan.skipped > 0) {
+                    errors[cv.xLightsController.name] =
+                        "${plan.skipped} segment(s) not created: WLED supports at most ${device.maxSegments} segments"
+                }
+            } catch (e: Exception) {
+                log.error("Update failed for '{}' ({}): {}", device.name, device.ipAddress, e.message)
+                errors[cv.xLightsController.name] = e.message ?: e.javaClass.simpleName
             }
         }
+        return errors
+    }
+
+    internal data class FixPlan(
+        val upserts: List<WledSegmentPatch>,
+        val deletions: List<WledSegmentPatch>,
+        val skipped: Int,
+    )
+
+    internal fun planFix(cv: ControllerValidation, device: WledDevice): FixPlan {
+        val upserts = mutableListOf<WledSegmentPatch>()
+        // Orphan segments (no matching xLights model) are recycled for missing models
+        // first, so we don't grow the segment list only to delete entries afterwards.
+        val reusable = ArrayDeque(cv.orphanSegments.map { it.id }.sorted())
+        // New segments are appended: WLED appends when the id is >= its segment count.
+        var nextId = (device.segments.maxOfOrNull { it.id } ?: -1) + 1
+        var skipped = 0
+
+        for (sv in cv.segmentValidations) {
+            val model = sv.model
+            when (sv.status) {
+                SegmentStatus.OK -> Unit
+
+                SegmentStatus.MISSING -> {
+                    val id = reusable.removeFirstOrNull()
+                        ?: nextId.takeIf { it < device.maxSegments }?.also { nextId++ }
+                    if (id == null) { skipped++; continue }
+                    upserts += WledSegmentPatch(
+                        id    = id,
+                        name  = model.name,
+                        start = sv.expectedPixelStart,
+                        stop  = sv.expectedPixelStop,
+                        on    = !model.isNull,
+                    )
+                }
+
+                SegmentStatus.RANGE_MISMATCH -> {
+                    val seg = sv.actualSegment!!
+                    upserts += WledSegmentPatch(
+                        id    = seg.id,
+                        start = sv.expectedPixelStart,
+                        stop  = sv.expectedPixelStop,
+                        // Turn a null model off in the same pass instead of needing a second update.
+                        on    = if (model.isNull && seg.on) false else null,
+                    )
+                }
+
+                SegmentStatus.NULL_NOT_OFF -> upserts += WledSegmentPatch(
+                    id = sv.actualSegment!!.id,
+                    on = false,
+                )
+            }
+        }
+
+        val deletions = reusable.sortedDescending().map { WledSegmentPatch(id = it, stop = 0) }
+        return FixPlan(upserts, deletions, skipped)
     }
 
     fun fixAll(report: ValidationReport) {
@@ -109,7 +167,7 @@ class ValidationService(
             }
 
             // Step 3: create segments in xLights model order (up to firmware limit)
-            val bpp = device.bytesPerPixel
+            val bpp = channelsPerPixel(controller)
             effective.take(device.maxSegments).forEachIndexed { index, model ->
                 val pixelStart = (model.startChannel - 1) / bpp
                 val pixelStop  = minOf(pixelStart + model.channelCount / bpp, device.totalLeds)
@@ -247,7 +305,7 @@ class ValidationService(
                 pairedWled    += device.name
             }
 
-            val bpp          = device?.bytesPerPixel ?: 3
+            val bpp          = channelsPerPixel(controller)
             val expectedLeds = controller.totalChannels / bpp
             val effective    = collapseGroups(controller.models)
             val segValidations = effective.map { model ->
@@ -302,6 +360,14 @@ class ValidationService(
             status             = status,
         )
     }
+
+    // Channels per pixel in the controller's xLights channel space, which is what
+    // xLights sends over DDP. Taken from the models, not WLED's light capability:
+    // a controller with one RGBW output among RGB ones (e.g. a white flood on an
+    // Octa) reports lc=3 (RGBW) even though xLights addresses the RGB models at 3
+    // channels per pixel, and dividing by 4 there puts every segment in the wrong place.
+    internal fun channelsPerPixel(controller: XLightsController): Int =
+        if (controller.models.isNotEmpty() && controller.models.all { it.bytesPerNode == 4 }) 4 else 3
 
     // Pair WLED device name to xLights controller name:
     //  1. Exact match (case-insensitive): "Octa1" == "Octa1"

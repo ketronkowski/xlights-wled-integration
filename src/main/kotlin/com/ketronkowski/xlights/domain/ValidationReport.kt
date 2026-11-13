@@ -30,6 +30,8 @@ data class ValidationReport(
     val controllerValidations: List<ControllerValidation>,
     val unpairedXlightsControllers: List<XLightsController>,
     val unpairedWledDevices: List<WledDevice>,
+    // Populated only by /api/fix: controller name → why its update failed or was incomplete.
+    val updateErrors: Map<String, String> = emptyMap(),
 ) {
     val hasErrors: Boolean
         get() = unpairedXlightsControllers.isNotEmpty()

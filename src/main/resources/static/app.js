@@ -340,7 +340,7 @@ function buildRowModel() {
     return {
       kind: 'paired', raw: cv, name, ip, reachable, selectable: reachable,
       reachableText: reach.text, reachableCls: reach.cls, reachableCategory: reachable ? 'reachable' : 'unreachable',
-      syncText: sync ? sync.text : '', syncCls: sync ? sync.cls : '', syncCategory: sync ? (sync.cls === 'ok' ? 'in-sync' : 'needs-update') : '',
+      syncText: sync ? sync.text : '', syncCls: sync ? sync.cls : '', syncTitle: sync ? sync.title : '', syncCategory: sync ? (sync.cls === 'ok' ? 'in-sync' : 'needs-update') : '',
       backupText: backup.text, backupCls: backup.cls, backupCategory: backup.cls === 'ok' ? 'backed-up' : 'never-backed-up',
     };
   });
@@ -352,7 +352,7 @@ function buildRowModel() {
       // backend successfully fetched live data from it.
       kind: 'unpaired', raw: dev, name: dev.name, ip: dev.ipAddress, reachable: true, selectable: true,
       reachableText: '', reachableCls: '', reachableCategory: 'reachable',
-      syncText: '', syncCls: '', syncCategory: '',
+      syncText: '', syncCls: '', syncTitle: '', syncCategory: '',
       backupText: backup.text, backupCls: backup.cls, backupCategory: backup.cls === 'ok' ? 'backed-up' : 'never-backed-up',
     };
   });
@@ -377,13 +377,40 @@ function reachBadge(reachable) {
   return reachable ? { cls: 'ok', text: 'Reachable' } : { cls: 'err', text: 'Unreachable' };
 }
 
+const SEGMENT_STATUS_TEXT = {
+  MISSING: 'missing on WLED',
+  RANGE_MISMATCH: 'wrong pixel range',
+  NULL_NOT_OFF: 'null model not turned off',
+};
+
+// Badge text separates segment problems (which Update fixes) from an LED-count
+// mismatch (a WLED LED Preferences setting that Update does not touch). The full
+// per-segment breakdown goes in the badge's tooltip.
 function syncBadge(cv) {
-  const issues = cv.segmentValidations.filter(sv => sv.status !== 'OK').length
-    + (cv.orphanSegments ? cv.orphanSegments.length : 0)
-    + (cv.totalLedsMatch ? 0 : 1);
-  return issues === 0
-    ? { cls: 'ok', text: 'In sync' }
-    : { cls: 'warn', text: `${issues} segment${issues === 1 ? '' : 's'} need update` };
+  const details = [];
+  cv.segmentValidations.filter(sv => sv.status !== 'OK').forEach(sv => {
+    let line = `${sv.model.name}: ${SEGMENT_STATUS_TEXT[sv.status] || sv.status}`;
+    if (sv.status === 'RANGE_MISMATCH' && sv.actualSegment) {
+      line += ` (WLED ${sv.actualSegment.start}-${sv.actualSegment.stop}, xLights ${sv.expectedPixelStart}-${sv.expectedPixelStop})`;
+    }
+    details.push(line);
+  });
+  (cv.orphanSegments || []).forEach(seg =>
+    details.push(`WLED segment ${seg.id}${seg.name ? ` "${seg.name}"` : ''}: no matching xLights model`));
+  const segIssues = details.length;
+
+  if (!cv.totalLedsMatch && cv.wledDevice) {
+    details.push(`LED count: WLED has ${cv.wledDevice.totalLeds}, xLights expects ${cv.expectedTotalLeds} ` +
+      '(change in WLED LED Preferences; Update does not change this)');
+  }
+  if (cv.segmentLimitWarning) details.push(cv.segmentLimitWarning);
+
+  const parts = [];
+  if (segIssues > 0) parts.push(`${segIssues} segment${segIssues === 1 ? '' : 's'} need update`);
+  if (!cv.totalLedsMatch) parts.push('LED count differs');
+  return parts.length === 0
+    ? { cls: 'ok', text: 'In sync', title: '' }
+    : { cls: 'warn', text: parts.join(' · '), title: details.join('\n') };
 }
 
 function latestBackupFor(controllerName) {
@@ -398,7 +425,7 @@ function backupBadge(controllerName) {
 }
 
 function buildCard(row) {
-  const { name, ip, reachable, reachableText, reachableCls, syncText, syncCls, backupText, backupCls, kind } = row;
+  const { name, ip, reachable, reachableText, reachableCls, syncText, syncCls, syncTitle, backupText, backupCls, kind } = row;
   const ipDisplay = kind === 'unpaired' ? `${ip} · not in xLights config` : (ip || 'no address');
 
   const card = document.createElement('div');
@@ -415,7 +442,7 @@ function buildCard(row) {
     </div>
     <div class="badges">
       ${reachableText ? `<span class="badge ${reachableCls}">${escapeHtml(reachableText)}</span>` : ''}
-      ${syncText ? `<span class="badge ${syncCls}">${escapeHtml(syncText)}</span>` : ''}
+      ${syncText ? `<span class="badge ${syncCls}" title="${escapeHtml(syncTitle)}">${escapeHtml(syncText)}</span>` : ''}
       <span class="badge ${backupCls}">${escapeHtml(backupText)}</span>
     </div>
   `;
@@ -492,7 +519,7 @@ function renderList(rows) {
 }
 
 function buildListRow(row) {
-  const { name, reachable, reachableText, reachableCls, syncText, syncCls, backupText, backupCls, kind, ip } = row;
+  const { name, reachable, reachableText, reachableCls, syncText, syncCls, syncTitle, backupText, backupCls, kind, ip } = row;
   const ipDisplay = kind === 'unpaired' ? `${ip} · not in xLights config` : (ip || 'no address');
 
   const el = document.createElement('div');
@@ -504,7 +531,7 @@ function buildListRow(row) {
     <span class="list-name">${escapeHtml(name)}</span>
     <span class="list-ip">${escapeHtml(ipDisplay)}</span>
     ${reachableText ? `<span class="badge ${reachableCls}">${escapeHtml(reachableText)}</span>` : '<span></span>'}
-    ${syncText ? `<span class="badge ${syncCls}">${escapeHtml(syncText)}</span>` : '<span></span>'}
+    ${syncText ? `<span class="badge ${syncCls}" title="${escapeHtml(syncTitle)}">${escapeHtml(syncText)}</span>` : '<span></span>'}
     <span class="badge ${backupCls}">${escapeHtml(backupText)}</span>
   `;
 
@@ -575,7 +602,9 @@ async function doRestore(name, ip, backupRecord) {
 
 async function updateToXlights(names) {
   if (names.length === 0) return;
-  setSummary(`Updating ${names.length === 1 ? names[0] : names.length + ' controllers'}…`);
+  const label = names.length === 1 ? names[0] : names.length + ' controllers';
+  setSummary(`Updating ${label}…`);
+  let errors = {};
   try {
     const res = await fetch('api/fix', {
       method: 'POST',
@@ -583,10 +612,19 @@ async function updateToXlights(names) {
       body: JSON.stringify({ controllers: names }),
     });
     if (!res.ok) throw new Error(String(res.status));
-    setSummary(`Updated ${names.length === 1 ? names[0] : names.length + ' controllers'}`);
-    await refreshStatus();
+    errors = (await res.json()).updateErrors || {};
   } catch (err) {
     setSummary(`Update failed — ${err.message}`, true);
+    return;
+  }
+  // refreshStatus() clears the summary line, so report the outcome after it.
+  await refreshStatus();
+  const failed = Object.entries(errors);
+  if (failed.length === 0) {
+    setSummary(`Updated ${label}`);
+  } else {
+    const detail = failed.map(([name, msg]) => `${name}: ${msg}`).join('; ');
+    setSummary(`Updated ${names.length - failed.length}/${names.length} — ${detail}`, true);
   }
 }
 

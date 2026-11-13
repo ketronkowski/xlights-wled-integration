@@ -27,8 +27,8 @@ class ValidationController(
     fun fix(@RequestBody(required = false) req: ValidateRequest?): ValidationReport {
         val filter = filterOf(req)
         val before = validationService.validate(xlightsDir, 0, filter)
-        validationService.fix(before)
-        return validationService.validate(xlightsDir, 0, filter)
+        val errors = validationService.fix(before)
+        return validationService.validate(xlightsDir, 0, filter).copy(updateErrors = errors)
     }
 
     @PostMapping("/fix-all")
