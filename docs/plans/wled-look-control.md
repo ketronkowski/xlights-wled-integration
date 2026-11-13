@@ -177,8 +177,9 @@ never just the fields you changed, so every controller ends up identical.
    segment needs an update and there are no orphan segments). Otherwise the
    button stays disabled with a tooltip naming the controllers to fix with
    Update Selected first. Unpaired WLED devices and FPP controllers can't be
-   used. An "LED count differs" warning on its own doesn't block it, since
-   Update Selected can't fix that. The backend re-checks the same condition on
+   used. An "LED count differs" warning also blocks it: fix the pixel count in
+   WLED's LED Preferences (Update Selected can't) before setting a look. The
+   backend re-checks the same condition on
    Apply and rejects a controller that has drifted.
 2. Opens the dialog, calls the catalog endpoint, pre-fills from the first
    controller's main segment.
@@ -213,7 +214,8 @@ never just the fields you changed, so every controller ends up identical.
    no `lor` is sent; the dialog only warns when a controller is live.
 2. **Segments:** only segments matching a non-null xLights model get the look;
    everything else (nulls included) is turned off. Every selected controller
-   must be in sync with xLights before the dialog opens.
+   must be fully in sync with xLights before the dialog opens, including
+   matching LED count.
 3. **Whole look:** Apply always sends the full look.
 4. **Presets:** temporary change for now; presets come in a follow-on feature.
 5. **2D effects:** hidden.
