@@ -1,6 +1,7 @@
 package com.ketronkowski.xlights.validation
 
 import com.ketronkowski.xlights.domain.*
+import com.ketronkowski.xlights.fpp.FppApiClient
 import com.ketronkowski.xlights.wled.WledApiClient
 import com.ketronkowski.xlights.wled.WledBackupService
 import com.ketronkowski.xlights.wled.WledDiscovery
@@ -19,6 +20,7 @@ class ValidationService(
     private val discovery: WledDiscovery,
     private val apiClient: WledApiClient,
     private val backupService: WledBackupService,
+    private val fppClient: FppApiClient,
 ) {
     private val log = LoggerFactory.getLogger(ValidationService::class.java)
 
@@ -30,10 +32,36 @@ class ValidationService(
         val allControllers = parser.parse(showDir)
         val controllers    = if (controllerFilter.isEmpty()) allControllers
             else allControllers.filter { c -> controllerFilter.any { it.equals(c.name, ignoreCase = true) } }
+        // FPP show controllers that xLights labels as FPP never go through WLED fetch.
+        val (fppByConfig, candidates) = controllers.partition { it.isFpp }
         // Skip mDNS when a filter is given — we already have the exact hostnames we need.
         val runMdns = controllerFilter.isEmpty()
-        val wledDevices = fetchDevices(controllers, if (runMdns) timeoutSeconds else 0)
-        return buildReport(controllers, wledDevices)
+        val wledDevices = fetchDevices(candidates, if (runMdns) timeoutSeconds else 0)
+
+        // An FPP that xLights lists under another vendor (e.g. a cape maker) fails the
+        // WLED fetch; ask it whether it's an FPP before calling it an unreachable WLED.
+        val fppByProbe = candidates.filter { c ->
+            c.ipAddress != null
+                && !c.vendor.equals("WLED", ignoreCase = true)
+                && wledDevices.none { matchesControllerName(it.name, c.name) }
+                && fppClient.looksLikeFpp(c.ipAddress)
+        }
+        val wledControllers = candidates.filter { it !in fppByProbe }
+        val showControllers = checkShowControllers(fppByConfig + fppByProbe)
+
+        return buildReport(wledControllers, wledDevices).copy(showControllers = showControllers)
+    }
+
+    private fun checkShowControllers(controllers: List<XLightsController>): List<ShowControllerStatus> {
+        if (controllers.isEmpty()) return emptyList()
+        val pool = Executors.newCachedThreadPool()
+        try {
+            return controllers
+                .map { c -> CompletableFuture.supplyAsync({ fppClient.checkAccess(c.name, c.ipAddress) }, pool) }
+                .map { it.get() }
+        } finally {
+            pool.shutdown()
+        }
     }
 
     // ── Fix modes ────────────────────────────────────────────────────────────

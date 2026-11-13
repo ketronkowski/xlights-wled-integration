@@ -87,4 +87,21 @@ class XLightsConfigParserTest {
 
         assertEquals(3 * 3, model.channelCount)
     }
+
+    @Test
+    fun `FPP is recognised from the xLights vendor, not the controller name`(@org.junit.jupiter.api.io.TempDir dir: java.nio.file.Path) {
+        dir.resolve("xlights_networks.xml").toFile().writeText("""
+            <Networks>
+              <Controller Name="Show Brain" Vendor="FPP" Model="Player Only" IP="10.0.0.5"><network MaxChannels="0"/></Controller>
+              <Controller Name="fpp" Vendor="WLED" IP="10.0.0.6"><network MaxChannels="90"/></Controller>
+            </Networks>
+        """.trimIndent())
+        dir.resolve("xlights_rgbeffects.xml").toFile().writeText("<xrgb><models/></xrgb>")
+
+        val byName = parser.parse(dir).associateBy { it.name }
+
+        assertTrue(byName.getValue("Show Brain").isFpp)
+        assertEquals("FPP", byName.getValue("Show Brain").vendor)
+        assertFalse(byName.getValue("fpp").isFpp)
+    }
 }

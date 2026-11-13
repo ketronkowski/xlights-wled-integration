@@ -357,7 +357,33 @@ function buildRowModel() {
     };
   });
 
-  return [...paired, ...unpaired];
+  const show = (report.showControllers || []).map(sc => {
+    const access = fppAccessBadge(sc);
+    return {
+      // FPP show controllers: reachability only. They have no WLED segments to
+      // sync and no WLED config to back up, so they can't be selected for those.
+      kind: 'fpp', raw: sc, name: sc.name, ip: sc.ipAddress || '', reachable: sc.access === 'REACHABLE', selectable: false,
+      reachableText: access.text, reachableCls: access.cls, reachableTitle: access.title,
+      reachableCategory: sc.access === 'REACHABLE' ? 'reachable' : 'unreachable',
+      syncText: 'FPP show controller', syncCls: 'na', syncTitle: sc.version ? `FPP ${sc.version}` : '', syncCategory: 'n/a',
+      backupText: 'Backup N/A', backupCls: 'na', backupCategory: 'n/a',
+    };
+  });
+
+  return [...paired, ...unpaired, ...show];
+}
+
+const FPP_ACCESS_BADGE = {
+  REACHABLE:     { cls: 'ok',   text: 'Reachable' },
+  AUTH_REQUIRED: { cls: 'warn', text: 'Needs credentials', hint: 'FPP asks for a password. Set FPP_PASSWORD (and FPP_USERNAME if not admin) on the server.' },
+  AUTH_FAILED:   { cls: 'err',  text: 'Credentials rejected', hint: 'FPP rejected the configured FPP_USERNAME / FPP_PASSWORD.' },
+  UNREACHABLE:   { cls: 'err',  text: 'Unreachable' },
+};
+
+function fppAccessBadge(sc) {
+  const b = FPP_ACCESS_BADGE[sc.access] || FPP_ACCESS_BADGE.UNREACHABLE;
+  const title = [b.hint, sc.access === 'REACHABLE' && sc.version ? `FPP ${sc.version}` : sc.error].filter(Boolean).join('\n');
+  return { cls: b.cls, text: b.text, title };
 }
 
 // ── Card rendering ───────────────────────────────────────────────────────
@@ -430,11 +456,12 @@ function backupBadge(controllerName) {
 function ipHtml(ip, kind) {
   if (!ip) return 'no address';
   const link = `<a class="ip-link" href="http://${escapeHtml(encodeURI(ip))}/" target="_blank" rel="noopener noreferrer" title="Open the WLED UI for ${escapeHtml(ip)}">${escapeHtml(ip)}</a>`;
-  return kind === 'unpaired' ? `${link} · not in xLights config` : link;
+  if (kind === 'unpaired') return `${link} · not in xLights config`;
+  return link;
 }
 
 function buildCard(row) {
-  const { name, ip, reachable, reachableText, reachableCls, syncText, syncCls, syncTitle, backupText, backupCls, kind } = row;
+  const { name, ip, reachable, reachableText, reachableCls, reachableTitle, syncText, syncCls, syncTitle, backupText, backupCls, kind } = row;
   const card = document.createElement('div');
   card.className = 'card';
   card.innerHTML = `
@@ -444,11 +471,11 @@ function buildCard(row) {
         <span class="card-ip">${ipHtml(ip, kind)}</span>
       </div>
       <label class="card-select">
-        <input type="checkbox" class="select-box" ${reachable ? '' : 'disabled'} />
+        <input type="checkbox" class="select-box" ${row.selectable ? '' : 'disabled'} />
       </label>
     </div>
     <div class="badges">
-      ${reachableText ? `<span class="badge ${reachableCls}">${escapeHtml(reachableText)}</span>` : ''}
+      ${reachableText ? `<span class="badge ${reachableCls}" title="${escapeHtml(reachableTitle || '')}">${escapeHtml(reachableText)}</span>` : ''}
       ${syncText ? `<span class="badge ${syncCls}" title="${escapeHtml(syncTitle)}">${escapeHtml(syncText)}</span>` : ''}
       <span class="badge ${backupCls}">${escapeHtml(backupText)}</span>
     </div>
@@ -526,16 +553,16 @@ function renderList(rows) {
 }
 
 function buildListRow(row) {
-  const { name, reachable, reachableText, reachableCls, syncText, syncCls, syncTitle, backupText, backupCls, kind, ip } = row;
+  const { name, reachable, reachableText, reachableCls, reachableTitle, syncText, syncCls, syncTitle, backupText, backupCls, kind, ip } = row;
   const el = document.createElement('div');
   el.className = 'list-row';
   el.innerHTML = `
     <label class="list-select">
-      <input type="checkbox" class="select-box" ${reachable ? '' : 'disabled'} />
+      <input type="checkbox" class="select-box" ${row.selectable ? '' : 'disabled'} />
     </label>
     <span class="list-name">${escapeHtml(name)}</span>
     <span class="list-ip">${ipHtml(ip, kind)}</span>
-    ${reachableText ? `<span class="badge ${reachableCls}">${escapeHtml(reachableText)}</span>` : '<span></span>'}
+    ${reachableText ? `<span class="badge ${reachableCls}" title="${escapeHtml(reachableTitle || '')}">${escapeHtml(reachableText)}</span>` : '<span></span>'}
     ${syncText ? `<span class="badge ${syncCls}" title="${escapeHtml(syncTitle)}">${escapeHtml(syncText)}</span>` : '<span></span>'}
     <span class="badge ${backupCls}">${escapeHtml(backupText)}</span>
   `;

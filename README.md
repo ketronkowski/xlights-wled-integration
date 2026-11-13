@@ -79,6 +79,10 @@ flowchart LR
 | `system` | Orchestrates the destructive "Clear All Controllers" reset (`SystemResetService`) |
 | `measure` | Boundary finder: lights a port in measuring colors and stores the measured plan (`MeasureService`) |
 
+### FPP show controllers
+
+A controller that xLights lists with vendor or model `FPP` (or any non-WLED controller that answers FPP's `/api/system/info`) is treated as a show controller, not a WLED: the app only checks whether it can reach it (Reachable, Needs credentials, Credentials rejected or Unreachable). It has no segment sync, it can't be selected for Update/Backup/Restore, and its backup reads N/A.
+
 ### REST API
 
 | Method | Path | Purpose |
@@ -162,6 +166,7 @@ If you're standing this up on your own cluster, here's what it expects:
 - **Modest resources**: the reference deployment requests `100m` CPU / `256Mi` memory with a `512Mi` memory limit — this is a low-traffic, seasonal internal tool, not something that needs headroom for concurrent load.
 - **Network reachability from the pod to your WLED devices'** LAN — the pod calls out to each device's `/json/*` HTTP API directly by IP/hostname (no `hostNetwork`, no mDNS discovery in-cluster), so make sure routing allows that.
 - **`XLIGHTS_DATA_DIR`** environment variable pointing at the PVC's mount path (defaults to `/data`).
+- **`FPP_USERNAME`** / **`FPP_PASSWORD`** (optional): HTTP basic credentials for a Falcon Player show controller whose UI password is enabled. `FPP_USERNAME` defaults to `admin`. Without them a password-protected FPP shows as "Needs credentials".
 
 ## CI/CD
 

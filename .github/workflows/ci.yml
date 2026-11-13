@@ -208,6 +208,11 @@ jobs:
             destination:
               server: https://kubernetes.default.svc
               namespace: xlights-wled-pr-$PR
+            ignoreDifferences:
+              - group: external-secrets.io
+                kind: ExternalSecret
+                jsonPointers:
+                  - /status
             syncPolicy:
               syncOptions:
                 - ServerSideApply=true

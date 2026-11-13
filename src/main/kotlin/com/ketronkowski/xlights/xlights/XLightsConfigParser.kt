@@ -51,6 +51,7 @@ class XLightsConfigParser {
             val ip       = el.getAttribute("IP").takeIf { it.isNotBlank() }
             val protocol = el.getAttribute("Protocol").ifBlank { el.getAttribute("Type") }
             val vendor   = el.getAttribute("Vendor")
+            val model    = el.getAttribute("Model")
 
             // MaxChannels lives on the first child <network> element
             val networkEl = el.getElementsByTagName("network").item(0) as? Element
@@ -64,6 +65,8 @@ class XLightsConfigParser {
                 protocol      = protocol,
                 totalChannels = channels,
                 models        = emptyList(),
+                vendor        = vendor,
+                model         = model,
             )
             log.debug("Parsed controller: {}  vendor={}  ip={}  channels={}", name, vendor, ip, channels)
         }
