@@ -1022,7 +1022,9 @@ async function loadLookCatalog(refresh) {
   }
   // Keep edits across a Refresh; otherwise start from what the first controller shows now.
   const base = (refresh && lookState) ? lookState : (lookCatalog.current || {});
+  const keepPower = refresh && lookState ? lookState.on : true;
   lookState = normalizeLook(base);
+  lookState.on = keepPower;
   lookSlot = 0;
   lookEls.lookLoading.hidden = true;
   lookEls.lookBody.hidden = false;
@@ -1035,7 +1037,8 @@ function normalizeLook(l) {
   const pal = lookCatalog.palettes.includes(l.pal) ? l.pal : (lookCatalog.palettes[0] || 'Default');
   const col = [0, 1, 2].map(i => (l.col && l.col[i]) ? l.col[i].slice(0, 3) : [0, 0, 0]);
   return {
-    on: l.on !== false, bri: clampInt(l.bri ?? 128, 1, 255), fx,
+    // Default to On: the controller may be off now, but the point here is to show a look.
+    on: true, bri: clampInt(l.bri ?? 128, 1, 255), fx,
     sx: l.sx ?? 128, ix: l.ix ?? 128, c1: l.c1 ?? 128, c2: l.c2 ?? 128, c3: l.c3 ?? 16,
     o1: !!l.o1, o2: !!l.o2, o3: !!l.o3, pal, col,
   };
@@ -1066,11 +1069,10 @@ function renderLook() {
 
 function renderLookPower() {
   lookEls.lookOn.checked = lookState.on;
-  lookEls.lookOnLabel.textContent = lookState.on ? 'On' : 'Off';
+  lookEls.lookOnLabel.textContent = lookState.on ? 'On' : 'Off (the look is set but stays dark until the power is turned on)';
   lookEls.lookBri.value = lookState.bri;
   lookEls.lookBriVal.textContent = lookState.bri;
   lookEls.lookBri.disabled = !lookState.on;
-  lookEls.lookBody.classList.toggle('look-off', !lookState.on);
 }
 
 function effectIcons(controls) {
@@ -1212,7 +1214,7 @@ function applyLook() {
   const look = { ...lookState, col: lookState.col.map(c => c.slice()) };
   const targets = lookTargets.slice();
   runAtomicBulk({
-    title: look.on ? `Setting Look: ${look.fx}` : 'Turning Controllers Off',
+    title: look.on ? `Setting Look: ${look.fx}` : `Setting Look: ${look.fx} (power off)`,
     request: async () => {
       const res = await fetch('api/look/apply', {
         method: 'POST',

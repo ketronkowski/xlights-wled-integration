@@ -146,8 +146,7 @@ class LookService(
                         cv ?: error("not a WLED controller in the uploaded xLights config")
                         notReadyReason(cv)?.let { error(it) }
                         val ip = cv.wledDevice!!.ipAddress
-                        val cat = if (req.look.on) controllerCatalog(ip) else null
-                        Prepared(target.name, ip, buildBody(cv, cat, req.look), null)
+                        Prepared(target.name, ip, buildBody(cv, controllerCatalog(ip), req.look), null)
                     } catch (e: Exception) {
                         Prepared(target.name, cv?.wledDevice?.ipAddress ?: target.ip, null, e.message ?: e.javaClass.simpleName)
                     }
@@ -190,13 +189,11 @@ class LookService(
      * The one `POST /json/state` body for a controller. Segments that match a non-null
      * xLights model get the whole look; every other segment is turned off. Every segment
      * is listed with its `id`, because WLED applies an id-less array entry by position.
+     * Power off still sets the effect and colors, so they're there when the lights come on.
      */
-    internal fun buildBody(cv: ControllerValidation, cat: ControllerCatalog?, look: Look): Map<String, Any?> {
+    internal fun buildBody(cv: ControllerValidation, cat: ControllerCatalog, look: Look): Map<String, Any?> {
         val noSync = mapOf("nn" to true)   // don't let UDP sync re-broadcast to unselected controllers
-        if (!look.on) return linkedMapOf("on" to false, "tt" to 0, "udpn" to noSync)
-
         val device = cv.wledDevice ?: error("controller is not reachable")
-        requireNotNull(cat) { "no effect list for ${device.ipAddress}" }
         val fx = cat.effects.indexOf(look.fx).takeIf { it >= 0 }
             ?: error("effect '${look.fx}' is not on this controller")
         val pal = cat.palettes.indexOf(look.pal).takeIf { it >= 0 }
@@ -221,7 +218,7 @@ class LookService(
         }
 
         return linkedMapOf(
-            "on" to true,
+            "on" to look.on,
             "bri" to look.bri.coerceIn(1, 255),
             "tt" to 0,   // apply instantly, so controllers don't drift during a crossfade
             "tb" to 0,   // reset the effect timebase so every controller starts in phase

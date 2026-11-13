@@ -89,9 +89,12 @@ class LookServiceTest {
     }
 
     @Test
-    fun `off sends only power off with no transition and no sync broadcast`() {
-        val body = service.buildBody(inSync, null, look.copy(on = false))
-        assertEquals(mapOf("on" to false, "tt" to 0, "udpn" to mapOf("nn" to true)), body)
+    fun `power off still sets the effect and colors on the segments`() {
+        val on = service.buildBody(inSync, catalog, look)
+        val off = service.buildBody(inSync, catalog, look.copy(on = false))
+        assertEquals(false, off["on"])
+        assertEquals(on["seg"], off["seg"])
+        assertEquals(mapOf("nn" to true), off["udpn"])
     }
 
     @Test

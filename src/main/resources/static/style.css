@@ -746,7 +746,6 @@ button.list-sort-btn:hover:not(:disabled) { color: var(--text-dim); background: 
   margin: 0 0 0.45rem;
 }
 
-.look-off .look-dim-when-off { opacity: 0.4; }
 
 .look-power { display: flex; flex-direction: column; gap: 0.5rem; }
 
