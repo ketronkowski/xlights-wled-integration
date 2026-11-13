@@ -91,6 +91,7 @@ let lookCatalog = null;   // LookCatalog from api/look/catalog
 let lookState = null;     // Look being edited: { on, bri, fx, sx, ix, c1, c2, c3, o1, o2, o3, pal, col }
 let lookTargets = [];     // [{ name, ip }]
 let lookSlot = 0;         // active color slot
+let lookPowerMixed = false; // selected controllers disagree on power
 
 // WLED's quick color swatches (wled00/data/index.htm), plus Random.
 const LOOK_SWATCHES = ['#ff0000', '#ffa000', '#ffc800', '#ffe0a0', '#ffffff', '#000000',
@@ -942,14 +943,14 @@ async function resetUiToPreUploadState() {
 
 function initLookModal() {
   ['lookModal', 'lookTargets', 'lookNotice', 'lookLoading', 'lookBody', 'lookOn', 'lookOnLabel', 'lookBri',
-    'lookBriVal', 'lookFxSearch', 'lookFxList', 'lookOpts', 'lookColors', 'lookSlots', 'lookColor',
+    'lookBriVal', 'lookPowerStatus', 'lookFxSearch', 'lookFxList', 'lookOpts', 'lookColors', 'lookSlots', 'lookColor',
     'lookSwatches', 'lookColorsUnused', 'lookPalLabel', 'lookPalWrap', 'lookPalSearch', 'lookPalList',
     'lookPalUnused', 'lookRefreshBtn', 'lookCloseBtn', 'lookApplyBtn'].forEach(id => { lookEls[id] = document.getElementById(id); });
 
   lookEls.lookCloseBtn.addEventListener('click', () => { lookEls.lookModal.hidden = true; });
   lookEls.lookRefreshBtn.addEventListener('click', () => loadLookCatalog(true));
   lookEls.lookApplyBtn.addEventListener('click', applyLook);
-  lookEls.lookOn.addEventListener('change', () => { lookState.on = lookEls.lookOn.checked; renderLookPower(); });
+  lookEls.lookOn.addEventListener('change', () => setLookPower(lookEls.lookOn.checked));
   lookEls.lookBri.addEventListener('input', () => { lookState.bri = Number(lookEls.lookBri.value); renderLookPower(); });
   lookEls.lookFxSearch.addEventListener('input', renderLookEffects);
   lookEls.lookPalSearch.addEventListener('input', renderLookPalettes);
@@ -1022,9 +1023,13 @@ async function loadLookCatalog(refresh) {
   }
   // Keep edits across a Refresh; otherwise start from what the first controller shows now.
   const base = (refresh && lookState) ? lookState : (lookCatalog.current || {});
-  const keepPower = refresh && lookState ? lookState.on : true;
   lookState = normalizeLook(base);
-  lookState.on = keepPower;
+  // The power switch is live, so it always shows what the controllers are doing now.
+  const powered = lookTargets.map(t => (lookCatalog.powered || {})[t.ip]).filter(v => v !== undefined);
+  lookPowerMixed = powered.some(Boolean) && !powered.every(Boolean);
+  lookState.on = powered.length > 0 && powered.every(Boolean);
+  lookEls.lookPowerStatus.textContent = '';
+  lookEls.lookPowerStatus.classList.remove('err');
   lookSlot = 0;
   lookEls.lookLoading.hidden = true;
   lookEls.lookBody.hidden = false;
@@ -1069,10 +1074,47 @@ function renderLook() {
 
 function renderLookPower() {
   lookEls.lookOn.checked = lookState.on;
-  lookEls.lookOnLabel.textContent = lookState.on ? 'On' : 'Off (the look is set but stays dark until the power is turned on)';
+  lookEls.lookOn.indeterminate = lookPowerMixed;
+  lookEls.lookOnLabel.textContent = lookPowerMixed ? 'Some on, some off' : (lookState.on ? 'On' : 'Off');
   lookEls.lookBri.value = lookState.bri;
   lookEls.lookBriVal.textContent = lookState.bri;
   lookEls.lookBri.disabled = !lookState.on;
+}
+
+// The power switch acts right away on every selected controller, without Apply.
+// It only flips power; the effect and colors on the controllers are left alone.
+async function setLookPower(on) {
+  const status = lookEls.lookPowerStatus;
+  lookEls.lookOn.disabled = true;
+  status.classList.remove('err');
+  status.textContent = on ? 'Turning on…' : 'Turning off…';
+  try {
+    const res = await fetch('api/look/power', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ controllers: lookTargets, on }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    const outcomes = await res.json();
+    const failed = outcomes.filter(o => !o.success);
+    const ok = outcomes.length - failed.length;
+    // Show what actually happened: if nothing switched, the switch stays where it was.
+    lookPowerMixed = ok > 0 && failed.length > 0;
+    if (ok > 0) lookState.on = on;
+    if (failed.length) {
+      status.classList.add('err');
+      status.textContent = `${ok}/${outcomes.length} turned ${on ? 'on' : 'off'}; failed: ` +
+        failed.map(o => `${o.name} (${o.error || 'error'})`).join(', ');
+    } else {
+      status.textContent = `${ok} turned ${on ? 'on' : 'off'}`;
+    }
+  } catch (err) {
+    status.classList.add('err');
+    status.textContent = `Could not turn ${on ? 'on' : 'off'}: ${err.message}`;
+  } finally {
+    lookEls.lookOn.disabled = false;
+    renderLookPower();
+  }
 }
 
 function lookListItem(label, isSelected, onPick) {

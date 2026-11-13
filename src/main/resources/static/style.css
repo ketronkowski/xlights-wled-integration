@@ -748,6 +748,9 @@ button.list-sort-btn:hover:not(:disabled) { color: var(--text-dim); background: 
 
 
 .look-power { display: flex; flex-direction: column; gap: 0.5rem; }
+.look-power-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem 0.8rem; }
+.look-power-status { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-dim); }
+.look-power-status.err { color: var(--err); }
 
 .look-toggle, .look-check {
   display: inline-flex;
@@ -869,3 +872,37 @@ button.list-sort-btn:hover:not(:disabled) { color: var(--text-dim); background: 
 
 .look-actions { margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--border); }
 .look-spacer { flex: 1; }
+
+/* Power: a toggle switch (still a checkbox underneath, for keyboard and screen readers). */
+.look-toggle input.look-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 2.6rem;
+  height: 1.4rem;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--border-strong);
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.look-switch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0.15rem;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  background: var(--text);
+  transform: translateY(-50%);
+  transition: left 0.15s ease;
+}
+
+.look-switch:checked { background: var(--accent); border-color: var(--accent); }
+.look-switch:checked::after { left: calc(100% - 1.2rem); background: var(--accent-ink); }
+.look-switch:indeterminate { background: color-mix(in srgb, var(--accent) 45%, var(--border-strong)); }
+.look-switch:indeterminate::after { left: calc(50% - 0.525rem); }
+.look-switch:disabled { opacity: 0.5; cursor: progress; }

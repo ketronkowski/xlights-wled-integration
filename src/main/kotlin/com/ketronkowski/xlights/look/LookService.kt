@@ -64,7 +64,7 @@ class LookService(
         val reachable = fetched.filter { it.catalog != null }
         val unreachable = fetched.filter { it.catalog == null }.associate { it.ip to (it.error ?: "unreachable") }
         val first = reachable.firstOrNull()
-            ?: return LookCatalog(emptyList(), emptyList(), null, emptyList(), unreachable)
+            ?: return LookCatalog(emptyList(), emptyList(), null, emptyList(), unreachable = unreachable)
 
         val catalogs = reachable.map { it.catalog!! }
         val effects = commonEffects(catalogs)
@@ -76,6 +76,7 @@ class LookService(
             palettes    = palettes,
             current     = current,
             live        = reachable.filter { it.info?.live == true }.map { it.ip },
+            powered     = reachable.associate { it.ip to (it.state?.on ?: false) },
             unreachable = unreachable,
         )
     }
@@ -168,6 +169,31 @@ class LookService(
             }.map { it.join() }
         }
     }
+
+    /**
+     * The dialog's power switch: turns the controllers on or off right away, leaving
+     * their effect and colors alone. Like Apply, it never overrides a running show.
+     */
+    fun power(req: PowerRequest): List<ApplyLookOutcome> {
+        val body = powerBody(req.on)
+        return Executors.newVirtualThreadPerTaskExecutor().use { pool ->
+            req.controllers.map { t ->
+                CompletableFuture.supplyAsync({
+                    try {
+                        val ip = t.ip?.takeIf { it.isNotBlank() } ?: error("no address for this controller")
+                        apiClient.postState(ip, body)
+                        ApplyLookOutcome(t.name, ip, true)
+                    } catch (e: Exception) {
+                        log.warn("Set Look power {} failed on '{}' ({}): {}", req.on, t.name, t.ip, e.message)
+                        ApplyLookOutcome(t.name, t.ip, false, e.message ?: e.javaClass.simpleName)
+                    }
+                }, pool)
+            }.map { it.join() }
+        }
+    }
+
+    internal fun powerBody(on: Boolean): Map<String, Any?> =
+        linkedMapOf("on" to on, "tt" to 0, "udpn" to mapOf("nn" to true))
 
     /**
      * Why a controller can't take a look, or null when it can: it must be paired with

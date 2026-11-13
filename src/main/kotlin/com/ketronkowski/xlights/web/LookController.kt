@@ -4,6 +4,7 @@ import com.ketronkowski.xlights.look.ApplyLookOutcome
 import com.ketronkowski.xlights.look.ApplyLookRequest
 import com.ketronkowski.xlights.look.LookCatalog
 import com.ketronkowski.xlights.look.LookService
+import com.ketronkowski.xlights.look.PowerRequest
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -25,4 +26,8 @@ class LookController(private val lookService: LookService) {
     /** Puts the look on every listed controller at once; one outcome per controller. */
     @PostMapping("/apply")
     fun apply(@RequestBody req: ApplyLookRequest): List<ApplyLookOutcome> = lookService.apply(req)
+
+    /** Turns the listed controllers on or off right away (the dialog's power switch). */
+    @PostMapping("/power")
+    fun power(@RequestBody req: PowerRequest): List<ApplyLookOutcome> = lookService.power(req)
 }

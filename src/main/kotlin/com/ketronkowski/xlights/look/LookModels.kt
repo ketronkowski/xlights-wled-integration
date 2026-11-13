@@ -27,6 +27,12 @@ data class ApplyLookRequest(
     val look: Look = Look(),
 )
 
+/** Power switch: takes effect at once, without Apply. */
+data class PowerRequest(
+    val controllers: List<LookTarget> = emptyList(),
+    val on: Boolean = true,
+)
+
 data class ApplyLookOutcome(
     val name: String,
     val ip: String?,
@@ -50,6 +56,8 @@ data class LookCatalog(
     val current: Look?,
     /** IPs of controllers currently receiving show data (the look won't show until it stops). */
     val live: List<String>,
+    /** ip → whether the controller's power is on right now. */
+    val powered: Map<String, Boolean> = emptyMap(),
     /** ip → why it could not be reached. */
     val unreachable: Map<String, String>,
 )

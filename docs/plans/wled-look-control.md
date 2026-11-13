@@ -219,7 +219,7 @@ never just the fields you changed, so every controller ends up identical.
 3. **Whole look:** Apply always sends the full look.
 4. **Presets:** temporary change for now; presets come in a follow-on feature.
 5. **2D effects:** hidden.
-6. **Apply button:** nothing goes out until Apply is pressed.
+6. **Apply button:** nothing goes out until Apply is pressed, except the Power switch, which turns the selected controllers on or off right away (Kevin, 2026-11-13).
 
 ## Sources
 

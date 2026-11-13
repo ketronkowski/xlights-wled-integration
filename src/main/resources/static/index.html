@@ -116,7 +116,10 @@
           <section class="look-section">
             <h3>Power</h3>
             <div class="look-power">
-              <label class="look-toggle"><input type="checkbox" id="lookOn" /> <span id="lookOnLabel">On</span></label>
+              <div class="look-power-row">
+                <label class="look-toggle" title="Takes effect right away, no Apply needed"><input type="checkbox" id="lookOn" class="look-switch" role="switch" /> <span id="lookOnLabel">On</span></label>
+                <span id="lookPowerStatus" class="look-power-status"></span>
+              </div>
               <label class="look-slider">
                 <span class="look-slider-label">Brightness</span>
                 <input type="range" id="lookBri" min="1" max="255" />

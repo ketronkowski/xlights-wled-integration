@@ -98,6 +98,16 @@ class LookServiceTest {
     }
 
     @Test
+    fun `power switch posts only on-off to every controller, and reports failures`() {
+        whenever(apiClient.postState(eq("192.168.6.26"), any())).thenThrow(RuntimeException("timeout"))
+        val out = service.power(PowerRequest(listOf(LookTarget("Octa5", "192.168.6.25"), LookTarget("Octa6", "192.168.6.26")), on = false))
+        verify(apiClient).postState("192.168.6.25", mapOf("on" to false, "tt" to 0, "udpn" to mapOf("nn" to true)))
+        assertTrue(out[0].success)
+        assertFalse(out[1].success)
+        assertEquals("timeout", out[1].error)
+    }
+
+    @Test
     fun `unknown effect name is an error, not a guess`() {
         val e = assertThrows(IllegalStateException::class.java) {
             service.buildBody(inSync, catalog, look.copy(fx = "Not There"))
