@@ -724,6 +724,15 @@ function buildItemRow(name, status, detail) {
   return li;
 }
 
+// Centre a row in the scrollable item list, leaving the rows just finished
+// visible above it. Scrolls only the list, never the page behind the modal.
+function scrollItemIntoView(row) {
+  if (!row) return;
+  const list = progressItemList;
+  const target = row.offsetTop - (list.clientHeight - row.offsetHeight) / 2;
+  list.scrollTop = Math.max(0, target);
+}
+
 function openProgressModal(title) {
   BULK_TRIGGER_BUTTONS.forEach(b => { b.disabled = true; });
   progressTitle.textContent = title;
@@ -755,9 +764,14 @@ function runSequentialBulk({ title, items, action }) {
   let succeeded = 0;
   let failed = 0;
 
+  // Index of the item being worked on (or the one that just failed). The list
+  // keeps it in view so long batches show what's running and what's finished.
+  let current = 0;
+
   function render() {
     progressItemList.innerHTML = '';
     items.forEach(name => progressItemList.appendChild(buildItemRow(name, statuses[name])));
+    scrollItemIntoView(progressItemList.children[current]);
   }
 
   function done() {
@@ -770,6 +784,7 @@ function runSequentialBulk({ title, items, action }) {
 
   function next(index) {
     if (stopped || index >= items.length) { done(); return; }
+    current = index;
     const name = items[index];
     statuses[name] = 'active';
     render();

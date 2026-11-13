@@ -598,6 +598,7 @@ button.list-sort-btn:hover:not(:disabled) { color: var(--text-dim); background: 
 }
 
 .bulk-item-list {
+  position: relative; /* offsetParent for rows, used to auto-scroll the active one */
   list-style: none;
   margin: 0 0 1rem;
   padding: 0;
