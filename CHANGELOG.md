@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/ketronkowski/xlights-wled-integration/compare/v0.2.0...v1.0.0) (2026-11-13)
+
+
+### Features
+
+* add progress modal for bulk controller operations ([#9](https://github.com/ketronkowski/xlights-wled-integration/issues/9)) ([26e74be](https://github.com/ketronkowski/xlights-wled-integration/commit/26e74be7c5d4331a54de34943388e4aa00e7e047))
+
 ## [0.2.0](https://github.com/ketronkowski/xlights-wled-integration/compare/v0.1.0...v0.2.0) (2026-11-13)
 
 
