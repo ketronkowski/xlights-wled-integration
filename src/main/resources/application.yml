@@ -4,6 +4,14 @@ spring:
   threads:
     virtual:
       enabled: true
+  # UI assets: without Cache-Control, browsers cache app.js/style.css heuristically
+  # and can keep running the previous release after a deploy. no-cache makes them
+  # revalidate (If-Modified-Since) on every load, so a normal reload picks up a new build.
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-cache: true
 
 xlights:
   data-dir: ${XLIGHTS_DATA_DIR:/data}
