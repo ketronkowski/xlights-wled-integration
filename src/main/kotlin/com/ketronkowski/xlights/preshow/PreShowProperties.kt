@@ -97,6 +97,12 @@ data class PreShowProperties(
         val statusEntity: String = "sensor.preshow_status",
         /** Link put on the push so a tap opens the report. */
         val reportUrl: String = "",
+        /** binary_sensor that is on while the iPhone camera feed is live (MediaMTX path ready). Blank = skip. */
+        val phoneFeedEntity: String = "",
+        /** sensor naming the input the stream is using now ("phone", or a fallback camera). */
+        val feedSourceEntity: String = "",
+        /** Value of [feedSourceEntity] that means the iPhone. */
+        val phoneSourceName: String = "phone",
     )
 
     data class WebCheck(

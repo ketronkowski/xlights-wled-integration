@@ -13,7 +13,7 @@ import java.time.format.DateTimeFormatter
 class ReportRenderer(private val props: PreShowProperties) {
 
     private val layerIcons = mapOf(
-        "Setup" to "🧾", "Power" to "🔌", "Boards" to "💡", "FPP" to "🎵", "Web" to "🌐",
+        "Setup" to "🧾", "Power" to "🔌", "Boards" to "💡", "FPP" to "🎵", "Camera" to "📷", "Web" to "🌐",
     )
 
     fun subject(run: PreShowRun): String =

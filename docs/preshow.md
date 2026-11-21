@@ -131,3 +131,63 @@ automation:
 
 Limit the automation to show nights with an extra condition (a date range or a
 `input_boolean.show_night`) if you don't want it outside the season.
+
+## iPhone camera feed (Home Assistant)
+
+The live stream box (live-01) serves `GET http://192.168.4.10:9998/status`:
+`{"phone_ready": bool, "show_ready": bool, "feed_source": "phone"|"camera-4k"|"camera-720p"|"none", "updated": "..."}`.
+Home Assistant polls it, the pre-show check reads the HA entities (`preshow.ha.phone-feed-entity`,
+`preshow.ha.feed-source-entity`), and an automation pushes when the phone drops during the show.
+
+```yaml
+# packages/live_feed.yaml
+rest:
+  - resource: http://192.168.4.10:9998/status
+    scan_interval: 15
+    timeout: 5
+    binary_sensor:
+      - name: Live iPhone feed
+        unique_id: live_iphone_feed
+        value_template: "{{ value_json.phone_ready }}"
+        device_class: connectivity
+    sensor:
+      - name: Live feed source
+        unique_id: live_feed_source
+        value_template: "{{ value_json.feed_source }}"
+
+automation:
+  - id: live_iphone_feed_dropped
+    alias: Live iPhone feed dropped during show
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.live_iphone_feed
+        to: ["off", "unavailable"]
+        for: "00:01:00"
+    condition:
+      - condition: time
+        after: "17:00:00"
+        before: "22:00:00"
+    action:
+      - service: notify.mobile_app_kevin_s_pixel
+        data:
+          title: "iPhone camera dropped"
+          message: >-
+            Stream is on {{ states('sensor.live_feed_source') }}. Open Blackmagic Camera and
+            toggle Live Stream off and on.
+          data: { tag: live-iphone-feed }
+      - wait_for_trigger:
+          - platform: state
+            entity_id: binary_sensor.live_iphone_feed
+            to: "on"
+            for: "00:00:30"
+        timeout: "05:00:00"
+      - service: notify.mobile_app_kevin_s_pixel
+        data:
+          title: "iPhone camera back"
+          message: "Stream is on {{ states('sensor.live_feed_source') }} again."
+          data: { tag: live-iphone-feed }
+```
+
+`mode: single` plus the wait means one drop sends one alert and one recovery notice; the shared
+`tag` replaces the alert on the phone when the recovery arrives.
