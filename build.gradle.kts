@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.ketronkowski"
-version = "1.0.0" // x-release-please-version
+version = "2.0.0" // x-release-please-version
 
 java {
     toolchain {

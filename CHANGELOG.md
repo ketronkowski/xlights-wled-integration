@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.0.0](https://github.com/ketronkowski/xlights-wled-integration/compare/v1.0.0...v2.0.0) (2026-11-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* daily read-only pre-show check with push and email report ([#34](https://github.com/ketronkowski/xlights-wled-integration/issues/34))
+
+### Features
+
+* daily read-only pre-show check with push and email report ([#34](https://github.com/ketronkowski/xlights-wled-integration/issues/34)) ([dedd199](https://github.com/ketronkowski/xlights-wled-integration/commit/dedd19965d4c659fa08c0bdb03ebd11460367380))
+* give floodlights their own look in Set Look ([#30](https://github.com/ketronkowski/xlights-wled-integration/issues/30)) ([6698fa4](https://github.com/ketronkowski/xlights-wled-integration/commit/6698fa4168499fa3699aa3b1eaed46cee860b78e))
+* merge back-to-back null models into one WLED segment ([#37](https://github.com/ketronkowski/xlights-wled-integration/issues/37)) ([a9508ad](https://github.com/ketronkowski/xlights-wled-integration/commit/a9508ad20490c75dada2fa5e09197bc7fb0d92e5))
+* merge xLights model groups into single WLED segments ([#31](https://github.com/ketronkowski/xlights-wled-integration/issues/31)) ([a5bf163](https://github.com/ketronkowski/xlights-wled-integration/commit/a5bf163cd7fd42a33644beafe6aca18c2f2a353d))
+* save new segments into each board's boot preset so they survive a reboot ([#36](https://github.com/ketronkowski/xlights-wled-integration/issues/36)) ([c1aeef6](https://github.com/ketronkowski/xlights-wled-integration/commit/c1aeef64ceaf17af6f5b93cfed6b1b8d0d2a184b))
+* Set Look action for selected WLED controllers ([#28](https://github.com/ketronkowski/xlights-wled-integration/issues/28)) ([0f1a239](https://github.com/ketronkowski/xlights-wled-integration/commit/0f1a239f9201cd2ce6eca5f18cefcfe243422063))
+
+
+### Bug Fixes
+
+* missing FPP schedule only warns before the first show night ([#35](https://github.com/ketronkowski/xlights-wled-integration/issues/35)) ([7b3ea79](https://github.com/ketronkowski/xlights-wled-integration/commit/7b3ea79749233a2a9d53f9d5f9e05eca38e46568))
+* pair WLED controllers by their configured IP, not only by name ([#32](https://github.com/ketronkowski/xlights-wled-integration/issues/32)) ([aafecc9](https://github.com/ketronkowski/xlights-wled-integration/commit/aafecc9a10fb78997deca637ff21e598f99edc5d))
+* pre-show check warns only when a board is lit, not just off its boot preset ([#38](https://github.com/ketronkowski/xlights-wled-integration/issues/38)) ([da692b3](https://github.com/ketronkowski/xlights-wled-integration/commit/da692b3d9611e124070166dc73c49dbc74949ecc))
+
 ## [1.0.0](https://github.com/ketronkowski/xlights-wled-integration/compare/v0.2.0...v1.0.0) (2026-11-13)
 
 
